@@ -1,12 +1,14 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy import func, and_, or_
 from datetime import datetime, timedelta
 from typing import List, Optional
 import os
 import shutil
 from pathlib import Path
+import stripe
 
 from .database import engine, Base, get_db
 from .auth import (
@@ -16,9 +18,19 @@ from .auth import (
 from .schemas import (
     Token, LoginRequest, UserResponse, UserCreate, CourseResponse, CourseCreate,
     DeviceResponse, DeviceCreate, SponsorCampaignResponse, SponsorCampaignCreate,
-    NoticeResponse, NoticeCreate, PlaylistItem, DevicePlaylist
+    NoticeResponse, NoticeCreate, PlaylistItem, DevicePlaylist,
+    CourseRegistrationRequest, SubscriptionResponse, DeviceAnalyticsResponse,
+    AnalyticsSummary, CourseAnalytics, EmailTemplateResponse
 )
-from .database import User, Course, Device, SponsorCampaign, Notice, UserRole
+from .database import (
+    User, Course, Device, SponsorCampaign, Notice, UserRole, Subscription,
+    DeviceAnalytics, EmailTemplate, SubscriptionStatus, PlanType
+)
+from .services.s3_service import storage_service
+from .services.email_service import email_service
+from .services.stripe_service import stripe_service
+from .services.provisioning_service import provisioning_service
+from .services.analytics_service import analytics_service
 
 Base.metadata.create_all(bind=engine)
 
@@ -82,6 +94,28 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     db.refresh(db_user)
     
     return db_user
+
+@app.post("/auth/register-course")
+async def register_course(registration_data: CourseRegistrationRequest, db: Session = Depends(get_db)):
+    if db.query(User).filter(User.email == registration_data.owner_email).first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    result = provisioning_service.create_course_with_owner(db, registration_data.dict())
+    
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create course"
+        )
+    
+    return {
+        "message": "Course registered successfully",
+        "course_id": result["course_id"],
+        "user_id": result["user_id"]
+    }
 
 @app.post("/admin/courses", response_model=CourseResponse)
 async def create_course(
@@ -170,16 +204,22 @@ async def create_campaign(
             detail="Maximum 5 campaigns per device allowed"
         )
     
-    file_extension = creative.filename.split(".")[-1]
-    filename = f"campaign_{campaign_data.device_id}_{datetime.now().timestamp()}.{file_extension}"
-    file_path = UPLOAD_DIR / filename
+    file_content = await creative.read()
+    file_url = storage_service.upload_file(
+        file_content=file_content,
+        filename=creative.filename,
+        content_type=creative.content_type
+    )
     
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(creative.file, buffer)
+    if not file_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload creative file"
+        )
     
     db_campaign = SponsorCampaign(
         **campaign_data.dict(),
-        creative_path=str(file_path)
+        creative_path=file_url
     )
     db.add(db_campaign)
     db.commit()
@@ -281,12 +321,79 @@ async def get_device_playlist(device_id: str, db: Session = Depends(get_db)):
             playlist_items.append(PlaylistItem(
                 type="campaign",
                 id=campaign.id,
-                content=f"/uploads/{os.path.basename(campaign.creative_path)}",
+                content=campaign.creative_path,
                 sponsor_name=campaign.sponsor_name
             ))
+    
+    analytics_service.record_device_sync(
+        db=db,
+        device_id=device.id,
+        impressions=len(playlist_items),
+        notices=len([item for item in playlist_items if item.type == "notice"]),
+        campaigns=len([item for item in playlist_items if item.type == "campaign"])
+    )
     
     return DevicePlaylist(
         device_id=device_id,
         last_updated=now,
         items=playlist_items
     )
+
+@app.get("/admin/subscriptions", response_model=List[SubscriptionResponse])
+async def list_subscriptions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    return db.query(Subscription).all()
+
+@app.get("/admin/analytics/summary", response_model=AnalyticsSummary)
+async def get_analytics_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    summary = analytics_service.get_system_summary(db)
+    return AnalyticsSummary(**summary)
+
+@app.get("/admin/analytics/courses", response_model=List[CourseAnalytics])
+async def get_course_analytics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    analytics = analytics_service.get_course_analytics(db)
+    return [CourseAnalytics(**course) for course in analytics]
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
+    payload = await request.body()
+    sig_header = request.headers.get('stripe-signature')
+    
+    event = stripe_service.handle_webhook(payload.decode(), sig_header)
+    if not event:
+        raise HTTPException(status_code=400, detail="Invalid webhook")
+    
+    if event['type'] == 'customer.subscription.updated':
+        stripe_service.update_subscription_in_db(db, event['data']['object']['id'], event['data'])
+    elif event['type'] == 'customer.subscription.deleted':
+        subscription = db.query(Subscription).filter(
+            Subscription.stripe_subscription_id == event['data']['object']['id']
+        ).first()
+        if subscription:
+            subscription.status = SubscriptionStatus.CANCELED
+            db.commit()
+    
+    return {"status": "success"}
+
+@app.get("/admin/email-templates", response_model=List[EmailTemplateResponse])
+async def list_email_templates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    return db.query(EmailTemplate).all()
+
+@app.post("/admin/setup-templates")
+async def setup_default_templates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    provisioning_service.create_default_email_templates(db)
+    return {"message": "Default email templates created"}

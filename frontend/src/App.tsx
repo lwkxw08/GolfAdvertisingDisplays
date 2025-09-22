@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginForm } from './components/LoginForm';
 import { AdminDashboard } from './components/AdminDashboard';
 import { TenantDashboard } from './components/TenantDashboard';
+import { CourseRegistrationForm } from './components/CourseRegistrationForm';
+import { OnboardingWizard } from './components/OnboardingWizard';
 
 const AppContent: React.FC = () => {
   const { user, isLoading } = useAuth();
+  const [showRegistration, setShowRegistration] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   if (isLoading) {
     return (
@@ -15,8 +19,28 @@ const AppContent: React.FC = () => {
     );
   }
 
+  if (showRegistration) {
+    return (
+      <CourseRegistrationForm
+        onSuccess={() => {
+          setShowRegistration(false);
+          setShowOnboarding(true);
+        }}
+        onBackToLogin={() => setShowRegistration(false)}
+      />
+    );
+  }
+
+  if (showOnboarding) {
+    return (
+      <OnboardingWizard
+        onComplete={() => setShowOnboarding(false)}
+      />
+    );
+  }
+
   if (!user) {
-    return <LoginForm />;
+    return <LoginForm onShowRegistration={() => setShowRegistration(true)} />;
   }
 
   if (user.role === 'admin') {

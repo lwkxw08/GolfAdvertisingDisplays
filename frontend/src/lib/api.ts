@@ -187,6 +187,43 @@ class ApiClient {
       body: JSON.stringify(noticeData),
     });
   }
+
+  async registerCourse(courseData: {
+    course_name: string;
+    location: string;
+    owner_email: string;
+    owner_password: string;
+    phone?: string;
+    website?: string;
+    plan_type: 'basic' | 'premium' | 'enterprise';
+  }) {
+    return this.request('/auth/register-course', {
+      method: 'POST',
+      body: JSON.stringify(courseData),
+    });
+  }
+
+  async getSubscriptions() {
+    return this.request('/admin/subscriptions');
+  }
+
+  async getAnalyticsSummary() {
+    return this.request('/admin/analytics/summary');
+  }
+
+  async getCourseAnalytics() {
+    return this.request('/admin/analytics/courses');
+  }
+
+  async getEmailTemplates() {
+    return this.request('/admin/email-templates');
+  }
+
+  async setupDefaultTemplates() {
+    return this.request('/admin/setup-templates', {
+      method: 'POST',
+    });
+  }
 }
 
 export const apiClient = new ApiClient();

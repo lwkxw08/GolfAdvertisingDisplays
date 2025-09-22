@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum, Float, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.sql import func
@@ -29,6 +29,18 @@ class CampaignInterval(str, enum.Enum):
     WEEKS = "weeks"
     MONTHS = "months"
 
+class SubscriptionStatus(str, enum.Enum):
+    ACTIVE = "active"
+    CANCELED = "canceled"
+    PAST_DUE = "past_due"
+    TRIALING = "trialing"
+    INCOMPLETE = "incomplete"
+
+class PlanType(str, enum.Enum):
+    BASIC = "basic"
+    PREMIUM = "premium"
+    ENTERPRISE = "enterprise"
+
 class User(Base):
     __tablename__ = "users"
     
@@ -48,11 +60,17 @@ class Course(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     location = Column(String, nullable=False)
+    owner_email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    website = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    onboarding_completed = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     devices = relationship("Device", back_populates="course")
     users = relationship("User", back_populates="course")
     notices = relationship("Notice", back_populates="course")
+    subscription = relationship("Subscription", back_populates="course", uselist=False)
 
 class Device(Base):
     __tablename__ = "devices"
@@ -103,6 +121,70 @@ class Notice(Base):
     device = relationship("Device", back_populates="notices")
     course = relationship("Course", back_populates="notices")
     creator = relationship("User")
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False, unique=True)
+    stripe_customer_id = Column(String, unique=True, nullable=True)
+    stripe_subscription_id = Column(String, unique=True, nullable=True)
+    plan_type = Column(Enum(PlanType), nullable=False, default=PlanType.BASIC)
+    status = Column(Enum(SubscriptionStatus), nullable=False, default=SubscriptionStatus.TRIALING)
+    current_period_start = Column(DateTime(timezone=True), nullable=True)
+    current_period_end = Column(DateTime(timezone=True), nullable=True)
+    trial_end = Column(DateTime(timezone=True), nullable=True)
+    cancel_at_period_end = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    course = relationship("Course", back_populates="subscription")
+
+class DeviceAnalytics(Base):
+    __tablename__ = "device_analytics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
+    sync_timestamp = Column(DateTime(timezone=True), nullable=False)
+    uptime_hours = Column(Float, default=0.0)
+    impressions_count = Column(Integer, default=0)
+    notices_displayed = Column(Integer, default=0)
+    campaigns_displayed = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    device = relationship("Device")
+    
+    __table_args__ = (
+        Index('idx_device_analytics_device_timestamp', 'device_id', 'sync_timestamp'),
+    )
+
+class EmailTemplate(Base):
+    __tablename__ = "email_templates"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    subject = Column(String, nullable=False)
+    html_content = Column(Text, nullable=False)
+    text_content = Column(Text, nullable=True)
+    variables = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class EmailLog(Base):
+    __tablename__ = "email_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    recipient_email = Column(String, nullable=False)
+    template_name = Column(String, nullable=False)
+    subject = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    error_message = Column(Text, nullable=True)
+    sent_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    __table_args__ = (
+        Index('idx_email_logs_recipient_sent', 'recipient_email', 'sent_at'),
+    )
 
 def get_db():
     db = SessionLocal()

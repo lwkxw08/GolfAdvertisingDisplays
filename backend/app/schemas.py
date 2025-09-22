@@ -1,7 +1,7 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, EmailStr
 from typing import Optional, List
 from datetime import datetime
-from .database import UserRole, CampaignInterval
+from .database import UserRole, CampaignInterval, SubscriptionStatus, PlanType
 
 class UserBase(BaseModel):
     email: str
@@ -35,8 +35,22 @@ class CourseBase(BaseModel):
 class CourseCreate(CourseBase):
     pass
 
+class CourseRegistrationRequest(BaseModel):
+    course_name: str
+    location: str
+    owner_email: EmailStr
+    owner_password: str
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    plan_type: PlanType = PlanType.BASIC
+
 class CourseResponse(CourseBase):
     id: int
+    owner_email: Optional[str]
+    phone: Optional[str]
+    website: Optional[str]
+    is_active: bool
+    onboarding_completed: bool
     created_at: datetime
     
     class Config:
@@ -116,3 +130,73 @@ class DevicePlaylist(BaseModel):
     device_id: str
     last_updated: datetime
     items: List[PlaylistItem]
+
+class SubscriptionBase(BaseModel):
+    plan_type: PlanType
+    status: SubscriptionStatus
+
+class SubscriptionCreate(SubscriptionBase):
+    course_id: int
+
+class SubscriptionResponse(SubscriptionBase):
+    id: int
+    course_id: int
+    stripe_customer_id: Optional[str]
+    stripe_subscription_id: Optional[str]
+    current_period_start: Optional[datetime]
+    current_period_end: Optional[datetime]
+    trial_end: Optional[datetime]
+    cancel_at_period_end: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class DeviceAnalyticsResponse(BaseModel):
+    id: int
+    device_id: int
+    sync_timestamp: datetime
+    uptime_hours: float
+    impressions_count: int
+    notices_displayed: int
+    campaigns_displayed: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class AnalyticsSummary(BaseModel):
+    total_devices: int
+    online_devices: int
+    total_impressions: int
+    total_uptime_hours: float
+    avg_uptime_percentage: float
+
+class CourseAnalytics(BaseModel):
+    course_id: int
+    course_name: str
+    device_count: int
+    online_devices: int
+    total_impressions: int
+    total_uptime_hours: float
+    revenue: float
+
+class EmailTemplateBase(BaseModel):
+    name: str
+    subject: str
+    html_content: str
+    text_content: Optional[str] = None
+    variables: Optional[str] = None
+
+class EmailTemplateCreate(EmailTemplateBase):
+    pass
+
+class EmailTemplateResponse(EmailTemplateBase):
+    id: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True

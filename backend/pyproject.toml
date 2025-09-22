@@ -20,6 +20,8 @@ redis = "^6.4.0"
 celery = "^5.5.3"
 supabase = "^2.19.0"
 python-dotenv = "^1.1.1"
+stripe = "^7.0.0"
+email-validator = "^2.1.0"
 
 
 [build-system]

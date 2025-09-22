@@ -5,7 +5,11 @@ import { Input } from './ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 
-export const LoginForm: React.FC = () => {
+interface LoginFormProps {
+  onShowRegistration: () => void;
+}
+
+export const LoginForm: React.FC<LoginFormProps> = ({ onShowRegistration }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -74,6 +78,16 @@ export const LoginForm: React.FC = () => {
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? 'Signing in...' : 'Sign In'}
             </Button>
+
+            <div className="text-center mt-4">
+              <button
+                type="button"
+                onClick={onShowRegistration}
+                className="text-sm text-blue-600 hover:text-blue-500"
+              >
+                New golf course? Register here
+              </button>
+            </div>
           </form>
           
           <div className="mt-4 text-sm text-gray-600">

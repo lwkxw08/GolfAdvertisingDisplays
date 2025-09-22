@@ -14,6 +14,9 @@ export const AdminDashboard: React.FC = () => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [campaigns, setCampaigns] = useState<SponsorCampaign[]>([]);
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [analyticsSummary, setAnalyticsSummary] = useState<any>(null);
+  const [courseAnalytics, setCourseAnalytics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
