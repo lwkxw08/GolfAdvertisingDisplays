@@ -40,7 +40,7 @@ class AnalyticsService:
             Course.id,
             Course.name,
             func.count(Device.id).label('device_count'),
-            func.sum(func.case((Device.is_online == True, 1), else_=0)).label('online_devices'),
+            func.sum(func.case([(Device.is_online == True, 1)], else_=0)).label('online_devices'),
             func.coalesce(func.sum(DeviceAnalytics.impressions_count), 0).label('total_impressions'),
             func.coalesce(func.sum(DeviceAnalytics.uptime_hours), 0).label('total_uptime_hours')
         ).outerjoin(Device, Course.id == Device.course_id)\
