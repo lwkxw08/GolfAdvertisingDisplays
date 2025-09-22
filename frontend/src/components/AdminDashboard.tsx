@@ -34,6 +34,7 @@ export const AdminDashboard: React.FC = () => {
     priority: 1,
   });
   const [campaignFile, setCampaignFile] = useState<File | null>(null);
+  const [deviceFilter, setDeviceFilter] = useState<number>(0); // 0 = all courses
 
   useEffect(() => {
     loadData();
@@ -278,8 +279,31 @@ export const AdminDashboard: React.FC = () => {
               </CardContent>
             </Card>
 
+            <Card>
+              <CardHeader>
+                <CardTitle>Filter Devices</CardTitle>
+                <CardDescription>Filter devices by golf course</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <select
+                  className="px-3 py-2 border border-gray-300 rounded-md w-full max-w-xs"
+                  value={deviceFilter}
+                  onChange={(e) => setDeviceFilter(parseInt(e.target.value))}
+                >
+                  <option value={0}>All Courses</option>
+                  {courses.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.name}
+                    </option>
+                  ))}
+                </select>
+              </CardContent>
+            </Card>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {devices.map((device) => (
+              {devices
+                .filter(device => deviceFilter === 0 || device.course_id === deviceFilter)
+                .map((device) => (
                 <Card key={device.id}>
                   <CardHeader>
                     <CardTitle>{device.name}</CardTitle>
