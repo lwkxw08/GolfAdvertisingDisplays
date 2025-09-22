@@ -31,10 +31,13 @@ from .services.email_service import email_service
 from .services.stripe_service import stripe_service
 from .services.provisioning_service import provisioning_service
 from .services.analytics_service import analytics_service
+from .monitoring import router as monitoring_router
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Golf CMS API", version="1.0.0")
+
+app.include_router(monitoring_router, prefix="", tags=["monitoring"])
 
 # Disable CORS. Do not remove this for full-stack development.
 app.add_middleware(
