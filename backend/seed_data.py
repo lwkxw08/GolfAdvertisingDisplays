@@ -1,6 +1,10 @@
+import os
+from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from app.database import SessionLocal, User, Course, Device, UserRole, Base, engine
 from app.auth import get_password_hash
+
+load_dotenv()
 
 def create_seed_data():
     Base.metadata.create_all(bind=engine)

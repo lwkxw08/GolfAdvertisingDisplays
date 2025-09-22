@@ -18,6 +18,8 @@ python-multipart = "^0.0.20"
 boto3 = "^1.40.35"
 redis = "^6.4.0"
 celery = "^5.5.3"
+supabase = "^2.19.0"
+python-dotenv = "^1.1.1"
 
 
 [build-system]
