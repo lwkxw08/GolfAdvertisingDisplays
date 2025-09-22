@@ -12,6 +12,7 @@ from typing import Dict, Any
 
 from .database import get_db, engine
 from .services.email_service import email_service
+from .services.alerting_service import alerting_service
 
 router = APIRouter(prefix="/monitoring", tags=["monitoring"])
 
@@ -67,12 +68,32 @@ async def detailed_health_check(db: Session = Depends(get_db)):
         }
     
     try:
+        cpu_percent = psutil.cpu_percent()
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        
+        system_metrics = {
+            "cpu_percent": cpu_percent,
+            "memory_percent": memory.percent,
+            "disk_percent": disk.percent
+        }
+        
         health_status["checks"]["system"] = {
             "status": "healthy",
-            "cpu_percent": psutil.cpu_percent(),
-            "memory_percent": psutil.virtual_memory().percent,
-            "disk_percent": psutil.disk_usage('/').percent
+            **system_metrics
         }
+        
+        alerts = alerting_service.check_system_health(system_metrics)
+        if alerts:
+            health_status["checks"]["system"]["alerts"] = alerts
+        
+        device_alerts = alerting_service.check_device_health(db)
+        health_status["checks"]["device_health"] = {
+            "status": "healthy" if not device_alerts else "warning",
+            "offline_devices": len(device_alerts),
+            "alerts": device_alerts
+        }
+        
     except Exception as e:
         health_status["checks"]["system"] = {
             "status": "error",

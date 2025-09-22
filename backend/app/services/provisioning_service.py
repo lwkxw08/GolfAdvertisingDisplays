@@ -6,6 +6,7 @@ from .stripe_service import stripe_service
 from typing import Dict, Optional
 import uuid
 import os
+import json
 
 class ProvisioningService:
     def __init__(self):
@@ -178,6 +179,47 @@ class ProvisioningService:
                 Best regards,
                 The Golf CMS Team
                 '''
+            },
+            {
+                "name": "device_offline_alert",
+                "subject": "Device Offline Alert - {{device_name}}",
+                "html_content": """
+                <h2>Device Offline Alert</h2>
+                <p><strong>Device:</strong> {{device_name}}</p>
+                <p><strong>Course:</strong> {{course_name}}</p>
+                <p><strong>Message:</strong> {{message}}</p>
+                <p><strong>Last Sync:</strong> {{last_sync}}</p>
+                <p>Please check the device connection and contact support if the issue persists.</p>
+                """,
+                "text_content": "Device {{device_name}} at {{course_name}} is offline. {{message}}",
+                "variables": json.dumps(["device_name", "course_name", "message", "last_sync"])
+            },
+            {
+                "name": "backup_success",
+                "subject": "Golf CMS Backup Completed Successfully",
+                "html_content": """
+                <h2>Backup Completed Successfully</h2>
+                <p>Your Golf CMS database backup has been completed successfully.</p>
+                <p><strong>Backup File:</strong> {{backup_filename}}</p>
+                <p><strong>Size:</strong> {{backup_size}}</p>
+                <p><strong>Timestamp:</strong> {{backup_timestamp}}</p>
+                <p>The backup has been stored securely and is available for disaster recovery.</p>
+                """,
+                "text_content": "Golf CMS backup completed: {{backup_filename}} ({{backup_size}})",
+                "variables": json.dumps(["backup_filename", "backup_size", "backup_timestamp"])
+            },
+            {
+                "name": "backup_failure",
+                "subject": "Golf CMS Backup Failed - Action Required",
+                "html_content": """
+                <h2>Backup Failed</h2>
+                <p>Your Golf CMS database backup has failed and requires immediate attention.</p>
+                <p><strong>Error:</strong> {{error_message}}</p>
+                <p><strong>Timestamp:</strong> {{timestamp}}</p>
+                <p>Please check the system logs and contact support if needed.</p>
+                """,
+                "text_content": "Golf CMS backup failed: {{error_message}}",
+                "variables": json.dumps(["error_message", "timestamp"])
             }
         ]
         

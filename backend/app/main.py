@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 from datetime import datetime, timedelta
@@ -20,7 +21,8 @@ from .schemas import (
     DeviceResponse, DeviceCreate, SponsorCampaignResponse, SponsorCampaignCreate,
     NoticeResponse, NoticeCreate, PlaylistItem, DevicePlaylist,
     CourseRegistrationRequest, SubscriptionResponse, DeviceAnalyticsResponse,
-    AnalyticsSummary, CourseAnalytics, EmailTemplateResponse
+    AnalyticsSummary, CourseAnalytics, EmailTemplateResponse, RevenueAnalytics,
+    TenantUsageAnalytics, SystemPerformanceMetrics, OnboardingProgress, BackupResult
 )
 from .database import (
     User, Course, Device, SponsorCampaign, Notice, UserRole, Subscription,
@@ -31,11 +33,20 @@ from .services.email_service import email_service
 from .services.stripe_service import stripe_service
 from .services.provisioning_service import provisioning_service
 from .services.analytics_service import analytics_service
+from .services.alerting_service import alerting_service
+from .services.backup_service import backup_service
+from .middleware.rate_limiting import RateLimitMiddleware
 from .monitoring import router as monitoring_router
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Golf CMS API", version="1.0.0")
+app = FastAPI(
+    title="Golf CMS API",
+    version="1.0.0",
+    description="Multi-tenant CMS for managing e-ink golf tee box displays",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 app.include_router(monitoring_router, prefix="", tags=["monitoring"])
 
@@ -47,6 +58,8 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+
+app.add_middleware(RateLimitMiddleware, redis_url=os.getenv("REDIS_URL"))
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -385,6 +398,145 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             db.commit()
     
     return {"status": "success"}
+
+@app.post("/admin/backup/create")
+async def create_backup(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Create a database backup"""
+    result = backup_service.create_database_backup(db)
+    return result
+
+@app.get("/admin/backup/export")
+async def export_data(
+    course_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Export data for a specific course or all data"""
+    result = backup_service.create_data_export(db, course_id)
+    return result
+
+@app.post("/admin/backup/schedule")
+async def schedule_backup(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Schedule automated backup"""
+    result = backup_service.schedule_automated_backups(db)
+    return result
+
+@app.get("/admin/analytics/revenue")
+async def get_revenue_analytics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Get revenue analytics and subscription metrics"""
+    return analytics_service.get_revenue_analytics(db)
+
+@app.get("/admin/analytics/tenants")
+async def get_tenant_analytics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Get usage analytics per tenant/course"""
+    return analytics_service.get_tenant_usage_analytics(db)
+
+@app.get("/admin/analytics/performance")
+async def get_performance_metrics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Get system performance metrics"""
+    return analytics_service.get_system_performance_metrics(db)
+
+@app.post("/admin/alerts/test")
+async def test_alert(
+    alert_type: str = "device_offline",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Test alert system"""
+    test_alert = {
+        "type": alert_type,
+        "severity": "warning",
+        "message": "This is a test alert from Golf CMS",
+        "device_name": "Test Device",
+        "course_name": "Test Course"
+    }
+    
+    if alert_type == "device_offline":
+        alerting_service._send_alert(db, test_alert)
+    else:
+        alerting_service._send_system_alert(test_alert)
+    
+    return {"status": "Test alert sent"}
+
+@app.get("/admin/alerts/check")
+async def check_alerts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Check for current alerts"""
+    device_alerts = alerting_service.check_device_health(db)
+    return {"device_alerts": device_alerts}
+
+@app.get("/onboarding/progress/{course_id}")
+async def get_onboarding_progress(
+    course_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get onboarding progress for a course"""
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    if current_user.role != UserRole.ADMIN and current_user.course_id != course_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    devices_count = db.query(Device).filter(Device.course_id == course_id).count()
+    campaigns_count = db.query(SponsorCampaign).filter(
+        SponsorCampaign.device_id.in_(
+            db.query(Device.id).filter(Device.course_id == course_id)
+        )
+    ).count()
+    
+    progress = {
+        "course_created": True,
+        "devices_added": devices_count > 0,
+        "campaigns_created": campaigns_count > 0,
+        "onboarding_completed": course.onboarding_completed,
+        "steps_completed": sum([
+            True,  # course_created
+            devices_count > 0,  # devices_added
+            campaigns_count > 0,  # campaigns_created
+            course.onboarding_completed  # onboarding_completed
+        ]),
+        "total_steps": 4
+    }
+    
+    return progress
+
+@app.post("/onboarding/complete/{course_id}")
+async def complete_onboarding(
+    course_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Mark onboarding as completed for a course"""
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    if current_user.role != UserRole.ADMIN and current_user.course_id != course_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    course.onboarding_completed = True
+    db.commit()
+    
+    return {"status": "Onboarding completed"}
 
 @app.get("/admin/email-templates", response_model=List[EmailTemplateResponse])
 async def list_email_templates(

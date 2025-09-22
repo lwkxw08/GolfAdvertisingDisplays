@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Alert, AlertDescription } from './ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Badge } from './ui/badge';
-import { Plus, Building, Monitor, Megaphone, LogOut } from 'lucide-react';
+import { Plus, Building, Monitor, Megaphone, BarChart3, LogOut } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
   const { user, logout } = useAuth();
@@ -16,6 +16,11 @@ export const AdminDashboard: React.FC = () => {
   const [campaigns, setCampaigns] = useState<SponsorCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  const [analytics, setAnalytics] = useState<any>({});
+  const [revenueAnalytics, setRevenueAnalytics] = useState<any>({});
+  const [tenantAnalytics, setTenantAnalytics] = useState<any[]>([]);
+  const [performanceMetrics, setPerformanceMetrics] = useState<any>({});
 
   const [newCourse, setNewCourse] = useState({ name: '', location: '' });
   const [newDevice, setNewDevice] = useState({ name: '', device_id: '', course_id: 0 });
@@ -45,10 +50,35 @@ export const AdminDashboard: React.FC = () => {
       setCourses(coursesData);
       setDevices(devicesData);
       setCampaigns(campaignsData);
+      
+      await loadAnalytics();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAnalytics = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const headers = { Authorization: `Bearer ${token}` };
+      
+      const [summaryData, revenueData, tenantData, performanceData] = await Promise.all([
+        fetch(`${import.meta.env.VITE_API_URL}/admin/analytics/summary`, { headers }).then(r => r.json()),
+        fetch(`${import.meta.env.VITE_API_URL}/admin/analytics/revenue`, { headers }).then(r => r.json()),
+        fetch(`${import.meta.env.VITE_API_URL}/admin/analytics/tenants`, { headers }).then(r => r.json()),
+        fetch(`${import.meta.env.VITE_API_URL}/admin/analytics/performance`, { headers }).then(r => r.json()),
+      ]);
+      
+      setAnalytics(summaryData);
+      setRevenueAnalytics(revenueData);
+      setTenantAnalytics(tenantData);
+      setPerformanceMetrics(performanceData);
+    } catch (err) {
+      console.error('Failed to load analytics:', err);
     }
   };
 
@@ -146,6 +176,10 @@ export const AdminDashboard: React.FC = () => {
             <TabsTrigger value="campaigns">
               <Megaphone className="w-4 h-4 mr-2" />
               Campaigns
+            </TabsTrigger>
+            <TabsTrigger value="analytics">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Analytics
             </TabsTrigger>
           </TabsList>
 
@@ -398,6 +432,107 @@ export const AdminDashboard: React.FC = () => {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="analytics" className="space-y-6">
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold">Analytics & Reports</h2>
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Revenue Analytics</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <p className="text-sm text-gray-600">Monthly Recurring Revenue</p>
+                    <p className="text-2xl font-bold text-green-600">${revenueAnalytics.total_mrr || 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm text-gray-600">Annual Recurring Revenue</p>
+                    <p className="text-2xl font-bold text-green-600">${revenueAnalytics.total_arr || 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm text-gray-600">Total Subscribers</p>
+                    <p className="text-2xl font-bold text-blue-600">{revenueAnalytics.total_subscribers || 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm text-gray-600">Active Courses</p>
+                    <p className="text-2xl font-bold text-purple-600">{revenueAnalytics.active_courses || 0}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">System Performance</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <p className="text-sm text-gray-600">Device Uptime</p>
+                    <p className="text-2xl font-bold text-green-600">{performanceMetrics.device_uptime_percentage?.toFixed(1) || 0}%</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm text-gray-600">Active Campaigns</p>
+                    <p className="text-2xl font-bold text-blue-600">{performanceMetrics.active_campaigns || 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm text-gray-600">System Health Score</p>
+                    <p className="text-2xl font-bold text-purple-600">{performanceMetrics.system_health_score || 0}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <h3 className="text-lg font-semibold mb-2">Total Devices</h3>
+                  <p className="text-3xl font-bold text-blue-600">{analytics.total_devices || 0}</p>
+                </div>
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <h3 className="text-lg font-semibold mb-2">Online Devices</h3>
+                  <p className="text-3xl font-bold text-green-600">{analytics.online_devices || 0}</p>
+                </div>
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <h3 className="text-lg font-semibold mb-2">Total Impressions</h3>
+                  <p className="text-3xl font-bold text-purple-600">{analytics.total_impressions || 0}</p>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Tenant Usage Analytics</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full table-auto">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-4 py-2 text-left">Course Name</th>
+                        <th className="px-4 py-2 text-left">Plan</th>
+                        <th className="px-4 py-2 text-left">Devices</th>
+                        <th className="px-4 py-2 text-left">Online</th>
+                        <th className="px-4 py-2 text-left">Uptime %</th>
+                        <th className="px-4 py-2 text-left">Last Activity</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tenantAnalytics.map((tenant) => (
+                        <tr key={tenant.course_id} className="border-t">
+                          <td className="px-4 py-2">{tenant.course_name}</td>
+                          <td className="px-4 py-2">
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              tenant.plan_type === 'basic' ? 'bg-blue-100 text-blue-800' :
+                              tenant.plan_type === 'premium' ? 'bg-purple-100 text-purple-800' :
+                              tenant.plan_type === 'enterprise' ? 'bg-green-100 text-green-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {tenant.plan_type}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2">{tenant.device_count}</td>
+                          <td className="px-4 py-2">{tenant.online_devices}</td>
+                          <td className="px-4 py-2">{tenant.avg_uptime_percentage?.toFixed(1) || 0}%</td>
+                          <td className="px-4 py-2">
+                            {tenant.last_activity ? new Date(tenant.last_activity).toLocaleDateString() : 'Never'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </TabsContent>
         </Tabs>

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, validator, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 from .database import UserRole, CampaignInterval, SubscriptionStatus, PlanType
 
@@ -200,3 +200,52 @@ class EmailTemplateResponse(EmailTemplateBase):
     
     class Config:
         from_attributes = True
+
+class RevenueAnalytics(BaseModel):
+    total_mrr: float
+    total_arr: float
+    total_subscribers: int
+    plan_breakdown: Dict
+    total_courses: int
+    active_courses: int
+    churn_rate: float
+    growth_rate: float
+
+class TenantUsageAnalytics(BaseModel):
+    course_id: int
+    course_name: str
+    owner_email: str
+    plan_type: str
+    device_count: int
+    online_devices: int
+    total_impressions_30d: int
+    total_uptime_hours_30d: float
+    avg_uptime_percentage: float
+    last_activity: Optional[datetime]
+    onboarding_completed: bool
+    created_at: datetime
+
+class SystemPerformanceMetrics(BaseModel):
+    device_sync_rate_24h: int
+    device_uptime_percentage: float
+    active_campaigns: int
+    active_notices: int
+    total_devices: int
+    offline_devices: int
+    system_health_score: float
+
+class OnboardingProgress(BaseModel):
+    course_created: bool
+    devices_added: bool
+    campaigns_created: bool
+    onboarding_completed: bool
+    steps_completed: int
+    total_steps: int
+
+class BackupResult(BaseModel):
+    timestamp: datetime
+    filename: Optional[str]
+    size_bytes: Optional[int]
+    backup_url: Optional[str]
+    status: str
+    error: Optional[str] = None
