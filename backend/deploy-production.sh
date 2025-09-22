@@ -41,10 +41,10 @@ echo "⏳ Waiting for services to start..."
 sleep 30
 
 echo "🏥 Performing health check..."
-if curl -f http://localhost/monitoring/health; then
+if curl -f http://localhost/healthz; then
     echo "✅ Golf CMS is running successfully!"
     echo "🌐 API available at: http://localhost"
-    echo "📊 Monitoring: http://localhost/monitoring/health"
+    echo "📊 Health check: http://localhost/healthz"
     echo "📚 API docs: http://localhost/docs"
 else
     echo "❌ Health check failed. Check logs:"

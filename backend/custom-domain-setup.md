@@ -72,7 +72,7 @@ server_name golfcms.com www.golfcms.com api.golfcms.com;
    ```
 5. **Verify deployment**:
    ```bash
-   curl -f https://golfcms.com/monitoring/health
+   curl -f https://golfcms.com/healthz
    ```
 
 ## Frontend Deployment
@@ -88,7 +88,7 @@ REACT_APP_API_URL=https://api.golfcms.com
 
 ## Monitoring
 
-- Health checks: `https://golfcms.com/monitoring/health`
+- Health checks: `https://golfcms.com/healthz`
 - Metrics: `https://golfcms.com/monitoring/metrics`
 - API docs: `https://golfcms.com/docs`
 
