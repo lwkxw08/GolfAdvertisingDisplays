@@ -147,6 +147,25 @@ class Notice(Base):
     style = relationship("NoticeStyle", foreign_keys=[style_id])
     schedule = relationship("AdvancedSchedule", foreign_keys=[schedule_id])
 
+class NoticeTemplate(Base):
+    __tablename__ = "notice_templates"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    style_id = Column(Integer, ForeignKey("notice_styles.id"), nullable=True)
+    default_duration_minutes = Column(Integer, default=60)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    course = relationship("Course")
+    creator = relationship("User")
+    style = relationship("NoticeStyle", foreign_keys=[style_id])
+
 class Subscription(Base):
     __tablename__ = "subscriptions"
     

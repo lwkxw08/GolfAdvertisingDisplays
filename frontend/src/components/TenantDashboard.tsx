@@ -20,7 +20,29 @@ export const TenantDashboard: React.FC = () => {
     title: '',
     content: '',
     device_id: 0,
-    start_time: '',
+    start_time: (() => {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
+    })(),
+    duration_minutes: 60,
+    style_id: null as number | null,
+    template_id: null as number | null,
+  });
+  const [noticeTemplates, setNoticeTemplates] = useState<any[]>([]);
+  const [noticeStyles, setNoticeStyles] = useState<any[]>([]);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showTemplate, setShowTemplate] = useState(false);
+  const [newTemplate, setNewTemplate] = useState({
+    name: '',
+    title: '',
+    content: '',
+    style_id: null as number | null,
+    default_duration_minutes: 60,
   });
 
   useEffect(() => {
@@ -34,12 +56,16 @@ export const TenantDashboard: React.FC = () => {
 
     try {
       setLoading(true);
-      const [devicesData, noticesData] = await Promise.all([
+      const [devicesData, noticesData, templatesData, stylesData] = await Promise.all([
         apiClient.getCourseDevices(user.course_id),
         apiClient.getNotices(user.course_id),
+        apiClient.getNoticeTemplates(user.course_id),
+        apiClient.getNoticeStyles(),
       ]);
       setDevices(devicesData);
       setNotices(noticesData);
+      setNoticeTemplates(templatesData);
+      setNoticeStyles(stylesData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -52,16 +78,51 @@ export const TenantDashboard: React.FC = () => {
     if (!user?.course_id) return;
 
     try {
-      await apiClient.createNotice(user.course_id, newNotice);
+      if (showAdvanced) {
+        await apiClient.createEnhancedNotice(user.course_id, newNotice);
+      } else {
+        await apiClient.createNotice(user.course_id, newNotice);
+      }
       setNewNotice({
         title: '',
         content: '',
         device_id: 0,
-        start_time: '',
+        start_time: (() => {
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
+          const hours = String(now.getHours()).padStart(2, '0');
+          const minutes = String(now.getMinutes()).padStart(2, '0');
+          return `${year}-${month}-${day}T${hours}:${minutes}`;
+        })(),
+        duration_minutes: 60,
+        style_id: null,
+        template_id: null,
       });
       loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create notice');
+    }
+  };
+
+  const handleCreateTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.course_id) return;
+
+    try {
+      await apiClient.createNoticeTemplate(user.course_id, newTemplate);
+      setNewTemplate({
+        name: '',
+        title: '',
+        content: '',
+        style_id: null,
+        default_duration_minutes: 60,
+      });
+      setShowTemplate(false);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create template');
     }
   };
 
@@ -122,11 +183,61 @@ export const TenantDashboard: React.FC = () => {
               <CardHeader>
                 <CardTitle>Create Notice</CardTitle>
                 <CardDescription>
-                  Create a temporary notice for your tee box displays (max 1 hour)
+                  Create a notice for your tee box displays with advanced scheduling options
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleCreateNotice} className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-medium">Create Notice</h3>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowAdvanced(!showAdvanced)}
+                    >
+                      {showAdvanced ? 'Basic' : 'Advanced'}
+                    </Button>
+                  </div>
+                  
+                  {noticeTemplates.length > 0 && (
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      value={newNotice.template_id || ''}
+                      onChange={(e) => {
+                        const templateId = e.target.value ? parseInt(e.target.value) : null;
+                        if (templateId) {
+                          const template = noticeTemplates.find(t => t.id === templateId);
+                          if (template) {
+                            setNewNotice({
+                              ...newNotice,
+                              template_id: templateId,
+                              title: template.title,
+                              content: template.content,
+                              style_id: template.style_id,
+                              duration_minutes: template.default_duration_minutes
+                            });
+                          }
+                        } else {
+                          setNewNotice({
+                            ...newNotice,
+                            template_id: null,
+                            title: '',
+                            content: '',
+                            style_id: null,
+                            duration_minutes: 60
+                          });
+                        }
+                      }}
+                    >
+                      <option value="">Create from scratch</option>
+                      {noticeTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  
                   <Input
                     placeholder="Notice Title"
                     value={newNotice.title}
@@ -163,10 +274,55 @@ export const TenantDashboard: React.FC = () => {
                     required
                   />
                   
-                  <Button type="submit" className="w-full">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Notice
-                  </Button>
+                  {showAdvanced && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Duration (minutes)</label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max={user?.role === 'course_manager' ? "1440" : "60"}
+                            value={newNotice.duration_minutes}
+                            onChange={(e) => setNewNotice({ ...newNotice, duration_minutes: parseInt(e.target.value) })}
+                            required
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Font Style</label>
+                          <select
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            value={newNotice.style_id || ''}
+                            onChange={(e) => setNewNotice({ ...newNotice, style_id: e.target.value ? parseInt(e.target.value) : null })}
+                          >
+                            <option value="">Default Style</option>
+                            {noticeStyles.map((style) => (
+                              <option key={style.id} value={style.id}>
+                                {style.name} ({style.font_family})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  
+                  <div className="flex space-x-2">
+                    <Button type="submit" className="flex-1">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create Notice
+                    </Button>
+                    {showAdvanced && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowTemplate(true)}
+                      >
+                        Save as Template
+                      </Button>
+                    )}
+                  </div>
                 </form>
               </CardContent>
             </Card>
@@ -254,6 +410,80 @@ export const TenantDashboard: React.FC = () => {
             </Card>
           </div>
         </div>
+
+        {showTemplate && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-lg font-medium mb-4">Save as Template</h3>
+              <form onSubmit={handleCreateTemplate} className="space-y-4">
+                <Input
+                  placeholder="Template Name"
+                  value={newTemplate.name}
+                  onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
+                  required
+                />
+                
+                <Input
+                  placeholder="Template Title"
+                  value={newTemplate.title}
+                  onChange={(e) => setNewTemplate({ ...newTemplate, title: e.target.value })}
+                  required
+                />
+                
+                <Textarea
+                  placeholder="Template Content"
+                  value={newTemplate.content}
+                  onChange={(e) => setNewTemplate({ ...newTemplate, content: e.target.value })}
+                  required
+                  rows={3}
+                />
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Default Duration (minutes)</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="1440"
+                      value={newTemplate.default_duration_minutes}
+                      onChange={(e) => setNewTemplate({ ...newTemplate, default_duration_minutes: parseInt(e.target.value) })}
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Font Style</label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      value={newTemplate.style_id || ''}
+                      onChange={(e) => setNewTemplate({ ...newTemplate, style_id: e.target.value ? parseInt(e.target.value) : null })}
+                    >
+                      <option value="">Default Style</option>
+                      {noticeStyles.map((style) => (
+                        <option key={style.id} value={style.id}>
+                          {style.name} ({style.font_family})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="flex space-x-2">
+                  <Button type="submit" className="flex-1">
+                    Save Template
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowTemplate(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

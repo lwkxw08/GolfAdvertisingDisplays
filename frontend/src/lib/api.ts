@@ -333,6 +333,24 @@ class ApiClient {
     });
     return response;
   }
+
+  async getNoticeTemplates(courseId: number): Promise<any[]> {
+    return this.request(`/courses/${courseId}/notice-templates`);
+  }
+
+  async createNoticeTemplate(courseId: number, templateData: any): Promise<any> {
+    return this.request(`/courses/${courseId}/notice-templates`, {
+      method: 'POST',
+      body: JSON.stringify(templateData),
+    });
+  }
+
+  async createEnhancedNotice(courseId: number, noticeData: any): Promise<any> {
+    return this.request(`/courses/${courseId}/notices/enhanced`, {
+      method: 'POST',
+      body: JSON.stringify(noticeData),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();

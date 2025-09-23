@@ -97,7 +97,7 @@ class AdvancedSchedulingService:
         """Create a custom notice style"""
         style = NoticeStyle(
             name=style_data['name'],
-            font_family=FontStyle(style_data.get('font_family', 'arial')),
+            font_family=FontStyle(style_data.get('font_family', 'ARIAL')),
             font_size=style_data.get('font_size', 24),
             font_weight=style_data.get('font_weight', 'normal'),
             text_color=style_data.get('text_color', '#000000'),

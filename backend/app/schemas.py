@@ -1,5 +1,5 @@
 from pydantic import BaseModel, validator, EmailStr
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from .database import UserRole, CampaignInterval, SubscriptionStatus, PlanType
 
@@ -103,8 +103,11 @@ class NoticeBase(BaseModel):
 class NoticeCreate(NoticeBase):
     @validator('start_time')
     def validate_start_time(cls, v):
-        if v < datetime.now():
-            raise ValueError('Start time cannot be in the past')
+        from datetime import timezone
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        if v < datetime.now(timezone.utc).replace(hour=datetime.now(timezone.utc).hour - 1):
+            raise ValueError('Start time cannot be more than 1 hour in the past')
         return v
 
 class NoticeResponse(NoticeBase):
@@ -249,3 +252,43 @@ class BackupResult(BaseModel):
     backup_url: Optional[str]
     status: str
     error: Optional[str] = None
+
+class NoticeTemplateBase(BaseModel):
+    name: str
+    title: str
+    content: str
+    style_id: Optional[int] = None
+    default_duration_minutes: int = 60
+
+class NoticeTemplateCreate(NoticeTemplateBase):
+    pass
+
+class NoticeTemplateResponse(NoticeTemplateBase):
+    id: int
+    course_id: int
+    created_by: int
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime]
+    
+    class Config:
+        from_attributes = True
+
+class EnhancedNoticeCreate(BaseModel):
+    title: str
+    content: str
+    device_id: int
+    start_time: datetime
+    duration_minutes: int = 60
+    style_id: Optional[int] = None
+    template_id: Optional[int] = None
+    schedule: Optional[Dict[str, Any]] = None
+    
+    @validator('start_time')
+    def validate_start_time(cls, v):
+        from datetime import timezone
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        if v < datetime.now(timezone.utc).replace(hour=datetime.now(timezone.utc).hour - 1):
+            raise ValueError('Start time cannot be more than 1 hour in the past')
+        return v

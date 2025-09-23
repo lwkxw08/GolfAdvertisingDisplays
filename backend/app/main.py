@@ -25,13 +25,14 @@ from .schemas import (
     NoticeResponse, NoticeCreate, PlaylistItem, DevicePlaylist,
     CourseRegistrationRequest, SubscriptionResponse, DeviceAnalyticsResponse,
     AnalyticsSummary, CourseAnalytics, EmailTemplateResponse, RevenueAnalytics,
-    TenantUsageAnalytics, SystemPerformanceMetrics, OnboardingProgress, BackupResult
+    TenantUsageAnalytics, SystemPerformanceMetrics, OnboardingProgress, BackupResult,
+    NoticeTemplateResponse, NoticeTemplateCreate, EnhancedNoticeCreate
 )
 from .database import (
     User, Course, Device, SponsorCampaign, Notice, UserRole, Subscription,
     DeviceAnalytics, EmailTemplate, SubscriptionStatus, PlanType, Region,
     AuditLog, CustomDashboard, DeviceDiagnostic, NoticeStyle, AdvancedSchedule,
-    SSOProvider, FontStyle, CampaignScheduleType
+    SSOProvider, FontStyle, CampaignScheduleType, NoticeTemplate
 )
 from .services.s3_service import storage_service
 from .services.email_service import email_service
@@ -311,6 +312,90 @@ async def list_notices(
     from .auth import check_course_access
     check_course_access(course_id, current_user)
     return db.query(Notice).filter(Notice.course_id == course_id).all()
+
+@app.get("/courses/{course_id}/notice-templates", response_model=List[NoticeTemplateResponse])
+async def list_notice_templates(
+    course_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_tenant_access)
+):
+    from .auth import check_course_access
+    check_course_access(course_id, current_user)
+    return db.query(NoticeTemplate).filter(
+        NoticeTemplate.course_id == course_id,
+        NoticeTemplate.is_active == True
+    ).all()
+
+@app.post("/courses/{course_id}/notice-templates", response_model=NoticeTemplateResponse)
+async def create_notice_template(
+    course_id: int,
+    template_data: NoticeTemplateCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_tenant_access)
+):
+    from .auth import check_course_access
+    check_course_access(course_id, current_user)
+    
+    db_template = NoticeTemplate(
+        **template_data.dict(),
+        course_id=course_id,
+        created_by=current_user.id
+    )
+    db.add(db_template)
+    db.commit()
+    db.refresh(db_template)
+    return db_template
+
+@app.post("/courses/{course_id}/notices/enhanced", response_model=NoticeResponse)
+async def create_enhanced_notice(
+    course_id: int,
+    notice_data: EnhancedNoticeCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_tenant_access)
+):
+    try:
+        print(f"DEBUG: Enhanced notice request data: {notice_data}")
+        from .auth import check_course_access
+        check_course_access(course_id, current_user)
+        
+        device = db.query(Device).filter(
+            Device.id == notice_data.device_id,
+            Device.course_id == course_id
+        ).first()
+        
+        if not device:
+            print(f"DEBUG: Device not found - device_id: {notice_data.device_id}, course_id: {course_id}")
+            raise HTTPException(status_code=404, detail="Device not found in this course")
+        
+        max_duration = 1440 if current_user.role in [UserRole.COURSE_MANAGER, UserRole.REGIONAL_ADMIN, UserRole.SUPER_ADMIN] else 60
+        if notice_data.duration_minutes > max_duration:
+            print(f"DEBUG: Duration exceeded - requested: {notice_data.duration_minutes}, max: {max_duration}")
+            raise HTTPException(status_code=400, detail=f"Duration cannot exceed {max_duration} minutes")
+        
+        enhanced_notice_data = {
+            'title': notice_data.title,
+            'content': notice_data.content,
+            'device_id': notice_data.device_id,
+            'course_id': course_id,
+            'created_by': current_user.id,
+            'start_time': notice_data.start_time,
+            'duration_minutes': notice_data.duration_minutes,
+            'style_id': notice_data.style_id
+        }
+        
+        if notice_data.schedule:
+            enhanced_notice_data['schedule'] = notice_data.schedule
+        
+        print(f"DEBUG: About to call advanced_scheduling_service with data: {enhanced_notice_data}")
+        result = advanced_scheduling_service.create_advanced_notice(db, enhanced_notice_data)
+        print(f"DEBUG: Successfully created enhanced notice: {result.id}")
+        return result
+    except Exception as e:
+        print(f"DEBUG: Error in create_enhanced_notice: {str(e)}")
+        print(f"DEBUG: Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 @app.get("/api/device/{device_id}/playlist", response_model=DevicePlaylist)
 async def get_device_playlist(device_id: str, db: Session = Depends(get_db)):
