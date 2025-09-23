@@ -5,6 +5,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 from datetime import datetime, timedelta
+
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 from typing import List, Optional
 import os
 import shutil
@@ -14,7 +16,8 @@ import stripe
 from .database import engine, Base, get_db
 from .auth import (
     get_password_hash, verify_password, create_access_token, 
-    get_current_user, require_admin, require_tenant_access
+    get_current_user, require_admin, require_tenant_access,
+    require_super_admin, require_course_manager
 )
 from .schemas import (
     Token, LoginRequest, UserResponse, UserCreate, CourseResponse, CourseCreate,
@@ -26,7 +29,9 @@ from .schemas import (
 )
 from .database import (
     User, Course, Device, SponsorCampaign, Notice, UserRole, Subscription,
-    DeviceAnalytics, EmailTemplate, SubscriptionStatus, PlanType
+    DeviceAnalytics, EmailTemplate, SubscriptionStatus, PlanType, Region,
+    AuditLog, CustomDashboard, DeviceDiagnostic, NoticeStyle, AdvancedSchedule,
+    SSOProvider, FontStyle, CampaignScheduleType
 )
 from .services.s3_service import storage_service
 from .services.email_service import email_service
@@ -35,7 +40,15 @@ from .services.provisioning_service import provisioning_service
 from .services.analytics_service import analytics_service
 from .services.alerting_service import alerting_service
 from .services.backup_service import backup_service
+from .services.auth_service import auth_service
+from .services.dashboard_service import dashboard_service
+from .services.device_management_service import device_management_service
+from .services.advanced_scheduling_service import advanced_scheduling_service
+from .services.audit_service import audit_service
+from .services.sso_service import sso_service
+from .services.region_service import region_service
 from .middleware.rate_limiting import RateLimitMiddleware
+from .middleware.audit_logging import AuditLoggingMiddleware
 from .monitoring import router as monitoring_router
 
 Base.metadata.create_all(bind=engine)
@@ -60,6 +73,9 @@ app.add_middleware(
 )
 
 app.add_middleware(RateLimitMiddleware, redis_url=os.getenv("REDIS_URL"))
+
+from .middleware.audit_logging import AuditLoggingMiddleware
+app.add_middleware(AuditLoggingMiddleware)
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -552,3 +568,350 @@ async def setup_default_templates(
 ):
     provisioning_service.create_default_email_templates(db)
     return {"message": "Default email templates created"}
+
+@app.post("/auth/sso/{provider_name}")
+async def sso_login(
+    provider_name: str,
+    sso_token: str,
+    db: Session = Depends(get_db)
+):
+    """Authenticate user via SSO provider"""
+    user = auth_service.authenticate_sso(db, provider_name, sso_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="SSO authentication failed")
+    
+    access_token = create_access_token(data={"sub": user.email})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/admin/dashboards")
+async def list_dashboards(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get user's custom dashboards"""
+    return dashboard_service.get_user_dashboards(db, current_user.id)
+
+@app.post("/admin/dashboards")
+async def create_dashboard(
+    dashboard_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Create a custom dashboard"""
+    dashboard = dashboard_service.create_custom_dashboard(
+        db, current_user.id, dashboard_data['name'], 
+        dashboard_data['layout'], dashboard_data.get('filters')
+    )
+    return dashboard
+
+@app.get("/admin/analytics/advanced")
+async def get_advanced_analytics(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Get advanced analytics for custom dashboards"""
+
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+    return dashboard_service.get_advanced_analytics(db, current_user, (start_date, end_date))
+
+@app.get("/admin/devices/{device_id}/diagnostics")
+async def get_device_diagnostics(
+    device_id: int,
+    hours: int = 24,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Get device diagnostic data"""
+    return device_management_service.get_device_diagnostics(db, device_id, hours)
+
+@app.post("/admin/devices/{device_id}/diagnostics")
+async def record_device_diagnostics(
+    device_id: int,
+    diagnostic_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Record device diagnostic data"""
+    return device_management_service.record_diagnostic_data(db, device_id, diagnostic_data)
+
+@app.post("/admin/devices/{device_id}/update")
+async def initiate_device_update(
+    device_id: int,
+    update_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Initiate remote device firmware update"""
+    return device_management_service.initiate_remote_update(
+        db, device_id, update_data['firmware_url'], update_data['version']
+    )
+
+@app.get("/admin/devices/health")
+async def get_device_health_summary(
+    course_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Get device health summary"""
+    return device_management_service.get_device_health_summary(db, course_id)
+
+@app.post("/admin/schedules")
+async def create_advanced_schedule(
+    schedule_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Create an advanced schedule"""
+    from datetime import datetime
+    schedule_data['start_date'] = datetime.fromisoformat(schedule_data['start_date'])
+    schedule_data['end_date'] = datetime.fromisoformat(schedule_data['end_date'])
+    return advanced_scheduling_service.create_advanced_schedule(db, schedule_data)
+
+@app.post("/admin/campaigns/seasonal")
+async def create_seasonal_campaign(
+    campaign_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Create a seasonal campaign"""
+    from datetime import datetime
+    campaign_data['start_date'] = datetime.fromisoformat(campaign_data['start_date'])
+    campaign_data['end_date'] = datetime.fromisoformat(campaign_data['end_date'])
+    return advanced_scheduling_service.create_seasonal_campaign(db, campaign_data)
+
+@app.post("/admin/campaigns/ab-test")
+async def create_ab_test_campaign(
+    test_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Create A/B test campaigns"""
+    from datetime import datetime
+    test_data['start_date'] = datetime.fromisoformat(test_data['start_date'])
+    test_data['end_date'] = datetime.fromisoformat(test_data['end_date'])
+    return advanced_scheduling_service.create_ab_test_campaign(db, test_data)
+
+@app.get("/admin/notice-styles")
+async def list_notice_styles(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get available notice styles"""
+    return db.query(NoticeStyle).all()
+
+@app.post("/admin/notice-styles")
+async def create_notice_style(
+    style_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_course_manager)
+):
+    """Create a custom notice style"""
+    return advanced_scheduling_service.create_notice_style(db, style_data)
+
+@app.post("/notices/advanced")
+async def create_advanced_notice(
+    notice_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_tenant_access)
+):
+    """Create a notice with advanced scheduling and styling"""
+    from datetime import datetime
+    notice_data['start_time'] = datetime.fromisoformat(notice_data['start_time'])
+    notice_data['created_by'] = current_user.id
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        device = db.query(Device).filter(Device.id == notice_data['device_id']).first()
+        if not device or (current_user.course_id and device.course_id != current_user.course_id):
+            raise HTTPException(status_code=403, detail="Access denied to this device")
+        notice_data['course_id'] = device.course_id
+    
+    return advanced_scheduling_service.create_advanced_notice(db, notice_data)
+
+@app.get("/admin/audit-logs")
+async def get_audit_logs(
+    limit: int = 100,
+    offset: int = 0,
+    action: Optional[str] = None,
+    resource_type: Optional[str] = None,
+    user_id: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    start_dt = datetime.fromisoformat(start_date) if start_date else None
+    end_dt = datetime.fromisoformat(end_date) if end_date else None
+    
+    logs = audit_service.get_audit_logs(
+        db, current_user, limit, offset, action, resource_type, 
+        user_id, start_dt, end_dt
+    )
+    
+    result = []
+    for log in logs:
+        user = db.query(User).filter(User.id == log.user_id).first()
+        log_dict = {
+            "id": log.id,
+            "timestamp": log.timestamp,
+            "action": log.action,
+            "resource_type": log.resource_type,
+            "resource_id": log.resource_id,
+            "details": log.details,
+            "ip_address": log.ip_address,
+            "user_agent": log.user_agent,
+            "user_email": user.email if user else "Unknown"
+        }
+        result.append(log_dict)
+    
+    return result
+
+@app.get("/admin/audit-logs/summary")
+async def get_audit_summary(
+    days: int = 30,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    return audit_service.get_audit_summary(db, current_user, days)
+
+@app.post("/admin/audit-logs/export")
+async def export_audit_logs(
+    export_request: dict,
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    start_date = datetime.fromisoformat(export_request['start_date'])
+    end_date = datetime.fromisoformat(export_request['end_date'])
+    format_type = export_request.get('format', 'json')
+    
+    return audit_service.export_audit_logs(db, current_user, start_date, end_date, format_type)
+
+@app.get("/admin/regions")
+async def list_regions(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    return region_service.get_regions(db, active_only=False)
+
+@app.post("/admin/regions")
+async def create_region(
+    region_data: dict,
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    return region_service.create_region(db, region_data)
+
+@app.get("/admin/regions/{region_id}")
+async def get_region(
+    region_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    region = region_service.get_region(db, region_id)
+    if not region:
+        raise HTTPException(status_code=404, detail="Region not found")
+    return region
+
+@app.put("/admin/regions/{region_id}")
+async def update_region(
+    region_id: int,
+    region_data: dict,
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    region = region_service.update_region(db, region_id, region_data)
+    if not region:
+        raise HTTPException(status_code=404, detail="Region not found")
+    return region
+
+@app.delete("/admin/regions/{region_id}")
+async def delete_region(
+    region_id: int,
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    success = region_service.delete_region(db, region_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Region not found")
+    return {"message": "Region deleted successfully"}
+
+@app.get("/admin/regions/{region_id}/statistics")
+async def get_region_statistics(
+    region_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    return region_service.get_region_statistics(db, region_id)
+
+@app.get("/admin/sso-providers")
+async def list_sso_providers(
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    return sso_service.get_sso_providers(db, active_only=False)
+
+@app.post("/admin/sso-providers")
+async def create_sso_provider(
+    provider_data: dict,
+    current_user: User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    provider = sso_service.create_sso_provider(db, provider_data)
+    return provider
+
+@app.post("/auth/sso/login")
+async def sso_login(
+    provider_id: int,
+    code: str,
+    state: str,
+    redirect_uri: str,
+    db: Session = Depends(get_db)
+):
+    provider = sso_service.get_sso_provider(db, provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="SSO provider not found")
+    
+    try:
+        token_data = sso_service.exchange_code_for_token(provider, code, redirect_uri)
+        
+        user_info = sso_service.get_user_info(provider, token_data['access_token'])
+        
+        user = sso_service.create_or_update_user(db, provider, user_info)
+        
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user.email}, expires_delta=access_token_expires
+        )
+        
+        return {"access_token": access_token, "token_type": "bearer", "user": user}
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"SSO login failed: {str(e)}")
+
+@app.get("/auth/sso/providers")
+async def get_sso_providers(db: Session = Depends(get_db)):
+    providers = sso_service.get_sso_providers(db)
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "provider_type": p.provider_type,
+            "authorization_url": p.authorization_url
+        }
+        for p in providers
+    ]
+
+@app.get("/auth/sso/{provider_id}/authorize")
+async def get_sso_authorization_url(
+    provider_id: int,
+    redirect_uri: str,
+    state: str,
+    db: Session = Depends(get_db)
+):
+    provider = sso_service.get_sso_provider(db, provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="SSO provider not found")
+    
+    auth_url = sso_service.get_authorization_url(provider, redirect_uri, state)
+    return {"authorization_url": auth_url}

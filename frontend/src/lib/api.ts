@@ -3,8 +3,13 @@ const API_BASE_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:
 export interface User {
   id: number;
   email: string;
-  role: 'admin' | 'client_tenant';
+  role: 'super_admin' | 'regional_admin' | 'course_manager' | 'client_tenant';
   course_id?: number;
+  region_id?: number;
+  permissions?: any;
+  last_login?: string;
+  sso_provider?: string;
+  sso_user_id?: string;
   is_active: boolean;
   created_at: string;
 }
@@ -13,6 +18,7 @@ export interface Course {
   id: number;
   name: string;
   location: string;
+  region_id?: number;
   created_at: string;
 }
 
@@ -24,6 +30,10 @@ export interface Device {
   is_online: boolean;
   last_sync?: string;
   created_at: string;
+  firmware_version?: string;
+  hardware_version?: string;
+  remote_update_enabled?: boolean;
+  diagnostic_enabled?: boolean;
 }
 
 export interface SponsorCampaign {
@@ -38,6 +48,9 @@ export interface SponsorCampaign {
   priority: number;
   is_active: boolean;
   created_at: string;
+  schedule_id?: number;
+  ab_test_group?: string;
+  performance_metrics?: any;
 }
 
 export interface Notice {
@@ -51,6 +64,9 @@ export interface Notice {
   end_time: string;
   is_active: boolean;
   created_at: string;
+  duration_minutes?: number;
+  style_id?: number;
+  schedule_id?: number;
 }
 
 class ApiClient {
@@ -223,6 +239,99 @@ class ApiClient {
     return this.request('/admin/setup-templates', {
       method: 'POST',
     });
+  }
+
+  async testAlert(alertType: string): Promise<any> {
+    const response = await this.request(`/admin/alerts/test?alert_type=${alertType}`, {
+      method: 'POST'
+    });
+    return response;
+  }
+
+  async getAdvancedAnalytics(days: number = 30): Promise<any> {
+    const response = await this.request(`/admin/analytics/advanced?days=${days}`);
+    return response;
+  }
+
+  async getDeviceHealth(courseId?: number): Promise<any> {
+    const url = courseId ? `/admin/devices/health?course_id=${courseId}` : '/admin/devices/health';
+    const response = await this.request(url);
+    return response;
+  }
+
+  async createAdvancedNotice(noticeData: any): Promise<any> {
+    const response = await this.request('/notices/advanced', {
+      method: 'POST',
+      body: JSON.stringify(noticeData)
+    });
+    return response;
+  }
+
+  async getNoticeStyles(): Promise<any> {
+    const response = await this.request('/admin/notice-styles');
+    return response;
+  }
+
+  async createSeasonalCampaign(campaignData: any): Promise<any> {
+    const response = await this.request('/admin/campaigns/seasonal', {
+      method: 'POST',
+      body: JSON.stringify(campaignData)
+    });
+    return response;
+  }
+
+  async createABTestCampaign(testData: any): Promise<any> {
+    const response = await this.request('/admin/campaigns/ab-test', {
+      method: 'POST',
+      body: JSON.stringify(testData)
+    });
+    return response;
+  }
+
+  async getAuditLogs(params?: any): Promise<any> {
+    const queryParams = new URLSearchParams(params || {}).toString();
+    const url = queryParams ? `/admin/audit-logs?${queryParams}` : '/admin/audit-logs';
+    const response = await this.request(url);
+    return response;
+  }
+
+  async getAuditSummary(days: number = 30): Promise<any> {
+    const response = await this.request(`/admin/audit-logs/summary?days=${days}`);
+    return response;
+  }
+
+  async exportAuditLogs(exportRequest: any): Promise<any> {
+    const response = await this.request('/admin/audit-logs/export', {
+      method: 'POST',
+      body: JSON.stringify(exportRequest)
+    });
+    return response;
+  }
+
+  async getRegions(): Promise<any> {
+    const response = await this.request('/admin/regions');
+    return response;
+  }
+
+  async createRegion(regionData: any): Promise<any> {
+    const response = await this.request('/admin/regions', {
+      method: 'POST',
+      body: JSON.stringify(regionData)
+    });
+    return response;
+  }
+
+  async getSSOProviders(): Promise<any> {
+    const response = await this.request('/admin/sso-providers');
+    return response;
+  }
+
+  async createSSOProvider(providerData: any): Promise<any> {
+    const response = await this.request('/admin/sso-providers', {
+      method: 'POST',
+      body: JSON.stringify(providerData)
+    });
+    return response;
   }
 }
 

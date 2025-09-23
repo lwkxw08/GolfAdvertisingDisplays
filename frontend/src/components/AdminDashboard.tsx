@@ -21,6 +21,12 @@ export const AdminDashboard: React.FC = () => {
   const [revenueAnalytics, setRevenueAnalytics] = useState<any>({});
   const [tenantAnalytics, setTenantAnalytics] = useState<any[]>([]);
   const [performanceMetrics, setPerformanceMetrics] = useState<any>({});
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [customDashboards, setCustomDashboards] = useState<any[]>([]);
+  const [deviceHealth, setDeviceHealth] = useState<any>({});
+  const [noticeStyles, setNoticeStyles] = useState<any[]>([]);
+  const [regions, setRegions] = useState<any[]>([]);
+  const [ssoProviders, setSsoProviders] = useState<any[]>([]);
 
   const [newCourse, setNewCourse] = useState({ name: '', location: '' });
   const [newDevice, setNewDevice] = useState({ name: '', device_id: '', course_id: 0 });
@@ -67,17 +73,23 @@ export const AdminDashboard: React.FC = () => {
 
       const headers = { Authorization: `Bearer ${token}` };
       
-      const [summaryData, revenueData, tenantData, performanceData] = await Promise.all([
+      const [summaryData, revenueData, tenantData, performanceData, healthData, stylesData, logsData] = await Promise.all([
         fetch(`${import.meta.env.VITE_API_URL}/admin/analytics/summary`, { headers }).then(r => r.json()),
         fetch(`${import.meta.env.VITE_API_URL}/admin/analytics/revenue`, { headers }).then(r => r.json()),
         fetch(`${import.meta.env.VITE_API_URL}/admin/analytics/tenants`, { headers }).then(r => r.json()),
         fetch(`${import.meta.env.VITE_API_URL}/admin/analytics/performance`, { headers }).then(r => r.json()),
+        apiClient.getDeviceHealth().catch(() => ({})),
+        apiClient.getNoticeStyles().catch(() => []),
+        apiClient.getAuditLogs().catch(() => [])
       ]);
       
       setAnalytics(summaryData);
       setRevenueAnalytics(revenueData);
       setTenantAnalytics(tenantData);
       setPerformanceMetrics(performanceData);
+      setDeviceHealth(healthData);
+      setNoticeStyles(stylesData);
+      setAuditLogs(logsData);
     } catch (err) {
       console.error('Failed to load analytics:', err);
     }
@@ -165,7 +177,7 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         <Tabs defaultValue="courses" className="space-y-6">
-          <TabsList>
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="courses">
               <Building className="w-4 h-4 mr-2" />
               Courses
@@ -177,6 +189,14 @@ export const AdminDashboard: React.FC = () => {
             <TabsTrigger value="campaigns">
               <Megaphone className="w-4 h-4 mr-2" />
               Campaigns
+            </TabsTrigger>
+            <TabsTrigger value="notices">
+              <Bell className="w-4 h-4 mr-2" />
+              Notices
+            </TabsTrigger>
+            <TabsTrigger value="device-mgmt">
+              <Settings className="w-4 h-4 mr-2" />
+              Device Mgmt
             </TabsTrigger>
             <TabsTrigger value="analytics">
               <BarChart3 className="w-4 h-4 mr-2" />
@@ -459,9 +479,172 @@ export const AdminDashboard: React.FC = () => {
             </div>
           </TabsContent>
 
+          <TabsContent value="notices" className="space-y-6">
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold">Advanced Notice Management</h2>
+              
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Create Advanced Notice</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Title</label>
+                    <Input placeholder="Notice title" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Device</label>
+                    <select className="w-full p-2 border rounded">
+                      <option value="">Select device</option>
+                      {devices.map(device => (
+                        <option key={device.id} value={device.id}>{device.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Duration (minutes)</label>
+                    <Input type="number" placeholder="60" min="1" max="1440" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Font Family</label>
+                    <select className="w-full p-2 border rounded">
+                      <option value="arial">Arial</option>
+                      <option value="helvetica">Helvetica</option>
+                      <option value="times">Times</option>
+                      <option value="courier">Courier</option>
+                      <option value="impact">Impact</option>
+                      <option value="comic_sans">Comic Sans</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Font Size</label>
+                    <Input type="number" placeholder="24" min="12" max="72" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Text Color</label>
+                    <Input type="color" defaultValue="#000000" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <label className="block text-sm font-medium mb-2">Content</label>
+                  <textarea 
+                    className="w-full p-2 border rounded h-24" 
+                    placeholder="Notice content..."
+                  />
+                </div>
+                <Button className="mt-4">Create Advanced Notice</Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="device-mgmt" className="space-y-6">
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold">Device Management</h2>
+              
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Device Health Overview</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="text-center p-4 bg-green-50 rounded">
+                    <p className="text-sm text-gray-600">Healthy Devices</p>
+                    <p className="text-2xl font-bold text-green-600">
+                      {devices.filter(d => d.is_online).length}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-yellow-50 rounded">
+                    <p className="text-sm text-gray-600">Warning Status</p>
+                    <p className="text-2xl font-bold text-yellow-600">0</p>
+                  </div>
+                  <div className="text-center p-4 bg-red-50 rounded">
+                    <p className="text-sm text-gray-600">Critical Issues</p>
+                    <p className="text-2xl font-bold text-red-600">
+                      {devices.filter(d => !d.is_online).length}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 bg-blue-50 rounded">
+                    <p className="text-sm text-gray-600">Total Devices</p>
+                    <p className="text-2xl font-bold text-blue-600">{devices.length}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Device Diagnostics</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full table-auto">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-4 py-2 text-left">Device</th>
+                        <th className="px-4 py-2 text-left">Status</th>
+                        <th className="px-4 py-2 text-left">Last Sync</th>
+                        <th className="px-4 py-2 text-left">Firmware</th>
+                        <th className="px-4 py-2 text-left">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {devices.map(device => (
+                        <tr key={device.id} className="border-t">
+                          <td className="px-4 py-2">{device.name}</td>
+                          <td className="px-4 py-2">
+                            <Badge variant={device.is_online ? "default" : "destructive"}>
+                              {device.is_online ? "Online" : "Offline"}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-2">
+                            {device.last_sync ? new Date(device.last_sync).toLocaleString() : 'Never'}
+                          </td>
+                          <td className="px-4 py-2">v1.0.0</td>
+                          <td className="px-4 py-2">
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline">Diagnostics</Button>
+                              <Button size="sm" variant="outline">Update</Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
           <TabsContent value="analytics" className="space-y-6">
             <div className="space-y-6">
               <h2 className="text-2xl font-bold">Analytics & Reports</h2>
+              
+              {/* Test Alerts Section (important-comment) */}
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">System Alerts</h3>
+                <div className="flex gap-4">
+                  <Button 
+                    onClick={async () => {
+                      try {
+                        await apiClient.testAlert('device_offline');
+                        setError('');
+                        alert('Test alert sent successfully!');
+                      } catch (err) {
+                        setError('Failed to send test alert');
+                      }
+                    }}
+                    variant="outline"
+                  >
+                    Test Device Alert
+                  </Button>
+                  <Button 
+                    onClick={async () => {
+                      try {
+                        await apiClient.testAlert('system_health');
+                        setError('');
+                        alert('System health alert sent!');
+                      } catch (err) {
+                        setError('Failed to send system alert');
+                      }
+                    }}
+                    variant="outline"
+                  >
+                    Test System Alert
+                  </Button>
+                </div>
+              </div>
+
               <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-xl font-semibold mb-4">Revenue Analytics</h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -559,8 +742,327 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </TabsContent>
+
+          <TabsContent value="audit-logs">
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Audit Logs</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full table-auto">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-4 py-2 text-left">Timestamp</th>
+                        <th className="px-4 py-2 text-left">User</th>
+                        <th className="px-4 py-2 text-left">Action</th>
+                        <th className="px-4 py-2 text-left">Resource</th>
+                        <th className="px-4 py-2 text-left">IP Address</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditLogs.map((log: any) => (
+                        <tr key={log.id} className="border-t">
+                          <td className="px-4 py-2">{new Date(log.timestamp).toLocaleString()}</td>
+                          <td className="px-4 py-2">{log.user_email}</td>
+                          <td className="px-4 py-2">
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              log.action === 'create' ? 'bg-green-100 text-green-800' :
+                              log.action === 'update' ? 'bg-blue-100 text-blue-800' :
+                              log.action === 'delete' ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2">{log.resource_type}</td>
+                          <td className="px-4 py-2">{log.ip_address}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="notices">
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Advanced Notice Management</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="text-lg font-medium mb-3">Create Advanced Notice</h4>
+                    <form className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                        <input
+                          type="text"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Notice title"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
+                        <textarea
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          rows={3}
+                          placeholder="Notice content"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Font Family</label>
+                        <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          <option value="Arial">Arial</option>
+                          <option value="Helvetica">Helvetica</option>
+                          <option value="Times">Times New Roman</option>
+                          <option value="Courier">Courier New</option>
+                          <option value="Impact">Impact</option>
+                          <option value="Comic Sans MS">Comic Sans</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Duration (minutes)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="1440"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="60"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Device</label>
+                        <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          <option value="">Select device</option>
+                          {devices.map((device) => (
+                            <option key={device.id} value={device.id}>
+                              {device.name} - {device.device_id}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <Button type="submit" className="w-full">
+                        Create Advanced Notice
+                      </Button>
+                    </form>
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-medium mb-3">Seasonal Campaigns</h4>
+                    <form className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Campaign Name</label>
+                        <input
+                          type="text"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Summer Special"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Season Start</label>
+                        <input
+                          type="date"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Season End</label>
+                        <input
+                          type="date"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Repeat Yearly</label>
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                      </div>
+                      <Button type="submit" className="w-full">
+                        Create Seasonal Campaign
+                      </Button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">A/B Testing Campaigns</h3>
+                <form className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Test Name</label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Header Color Test"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Duration (days)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="365"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="14"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Traffic Split (%)</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs text-gray-500">Variant A</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500">Variant B</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="50"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <Button type="submit" className="w-full">
+                    Create A/B Test Campaign
+                  </Button>
+                </form>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="device-mgmt">
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Device Management & Diagnostics</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="text-center">
+                    <p className="text-sm text-gray-600">Total Devices</p>
+                    <p className="text-2xl font-bold text-blue-600">{analytics.total_devices || 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm text-gray-600">Online Devices</p>
+                    <p className="text-2xl font-bold text-green-600">{analytics.online_devices || 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm text-gray-600">Health Score</p>
+                    <p className="text-2xl font-bold text-purple-600">{performanceMetrics.system_health_score || 0}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Device Health Monitoring</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full table-auto">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-4 py-2 text-left">Device</th>
+                        <th className="px-4 py-2 text-left">Status</th>
+                        <th className="px-4 py-2 text-left">Battery</th>
+                        <th className="px-4 py-2 text-left">Signal</th>
+                        <th className="px-4 py-2 text-left">Temperature</th>
+                        <th className="px-4 py-2 text-left">Last Sync</th>
+                        <th className="px-4 py-2 text-left">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {devices.map((device) => (
+                        <tr key={device.id} className="border-t">
+                          <td className="px-4 py-2">{device.name}</td>
+                          <td className="px-4 py-2">
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              device.is_online ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {device.is_online ? 'Online' : 'Offline'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2">85%</td>
+                          <td className="px-4 py-2">-65 dBm</td>
+                          <td className="px-4 py-2">22°C</td>
+                          <td className="px-4 py-2">2 min ago</td>
+                          <td className="px-4 py-2">
+                            <Button size="sm" variant="outline">
+                              Update Firmware
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Remote Device Updates</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="text-lg font-medium mb-3">Firmware Update</h4>
+                    <form className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Select Devices</label>
+                        <select multiple className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          {devices.map((device) => (
+                            <option key={device.id} value={device.id}>
+                              {device.name} - {device.device_id}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Firmware Version</label>
+                        <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          <option value="v2.1.0">v2.1.0 (Latest)</option>
+                          <option value="v2.0.5">v2.0.5</option>
+                          <option value="v2.0.0">v2.0.0</option>
+                        </select>
+                      </div>
+                      <Button type="submit" className="w-full">
+                        Start Firmware Update
+                      </Button>
+                    </form>
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-medium mb-3">Update Status</h4>
+                    <div className="space-y-3">
+                      <div className="p-3 bg-blue-50 rounded-md">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium">Device TEE-001</span>
+                          <span className="text-sm text-blue-600">In Progress</span>
+                        </div>
+                        <div className="mt-2 bg-blue-200 rounded-full h-2">
+                          <div className="bg-blue-600 h-2 rounded-full" style={{width: '75%'}}></div>
+                        </div>
+                      </div>
+                      <div className="p-3 bg-green-50 rounded-md">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium">Device TEE-002</span>
+                          <span className="text-sm text-green-600">Completed</span>
+                        </div>
+                        <div className="mt-2 bg-green-200 rounded-full h-2">
+                          <div className="bg-green-600 h-2 rounded-full" style={{width: '100%'}}></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
         </Tabs>
       </main>
     </div>
   );
 };
+
+export default AdminDashboard;
