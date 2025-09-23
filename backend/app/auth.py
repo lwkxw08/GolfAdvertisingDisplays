@@ -64,7 +64,7 @@ def require_admin(current_user: User = Depends(get_current_user)):
     else:
         role_value = str(current_user.role)
     
-    if role_value in ['ADMIN', 'SUPER_ADMIN', 'REGIONAL_ADMIN'] or current_user.role in admin_roles:
+    if role_value in ['admin', 'ADMIN', 'SUPER_ADMIN', 'REGIONAL_ADMIN'] or current_user.role in admin_roles:
         return current_user
     
     raise HTTPException(
@@ -78,7 +78,7 @@ def require_super_admin(current_user: User = Depends(get_current_user)):
     else:
         role_value = str(current_user.role)
     
-    if role_value in ['ADMIN', 'SUPER_ADMIN'] or current_user.role == UserRole.SUPER_ADMIN:
+    if role_value in ['admin', 'ADMIN', 'SUPER_ADMIN'] or current_user.role == UserRole.SUPER_ADMIN:
         return current_user
     
     raise HTTPException(
@@ -93,7 +93,7 @@ def require_course_manager(current_user: User = Depends(get_current_user)):
     else:
         role_value = str(current_user.role)
     
-    if role_value in ['ADMIN', 'SUPER_ADMIN', 'REGIONAL_ADMIN', 'COURSE_MANAGER'] or current_user.role in manager_roles:
+    if role_value in ['admin', 'ADMIN', 'SUPER_ADMIN', 'REGIONAL_ADMIN', 'COURSE_MANAGER'] or current_user.role in manager_roles:
         return current_user
     
     raise HTTPException(
@@ -111,7 +111,7 @@ def check_course_access(course_id: int, current_user: User):
         role_value = str(current_user.role)
     
     # Super admins have access to all courses
-    if role_value in ['ADMIN', 'SUPER_ADMIN'] or current_user.role == UserRole.SUPER_ADMIN:
+    if role_value in ['admin', 'ADMIN', 'SUPER_ADMIN'] or current_user.role == UserRole.SUPER_ADMIN:
         return True
     
     if (role_value == 'REGIONAL_ADMIN' or current_user.role == UserRole.REGIONAL_ADMIN) and current_user.region_id:
