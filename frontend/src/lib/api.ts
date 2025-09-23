@@ -3,7 +3,7 @@ const API_BASE_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:
 export interface User {
   id: number;
   email: string;
-  role: 'super_admin' | 'regional_admin' | 'course_manager' | 'client_tenant';
+  role: 'admin' | 'super_admin' | 'regional_admin' | 'course_manager' | 'client_tenant';
   course_id?: number;
   region_id?: number;
   permissions?: any;
