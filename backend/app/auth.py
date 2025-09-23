@@ -58,10 +58,26 @@ def get_current_user(email: str = Depends(verify_token), db: Session = Depends(g
     return user
 
 def require_admin(current_user: User = Depends(get_current_user)):
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.REGIONAL_ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required"
+        )
+    return current_user
+
+def require_super_admin(current_user: User = Depends(get_current_user)):
+    if current_user.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin access required"
+        )
+    return current_user
+
+def require_course_manager(current_user: User = Depends(get_current_user)):
+    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.REGIONAL_ADMIN, UserRole.COURSE_MANAGER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Course manager access required"
         )
     return current_user
 
@@ -69,11 +85,18 @@ def require_tenant_access(current_user: User = Depends(get_current_user)):
     return current_user
 
 def check_course_access(course_id: int, current_user: User):
-    if current_user.role == UserRole.ADMIN:
-        return True  # Admins have access to all courses
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return True  # Super admins have access to all courses
     
-    if current_user.role == UserRole.CLIENT_TENANT and current_user.course_id == course_id:
-        return True  # Tenant has access to their own course
+    if current_user.role == UserRole.REGIONAL_ADMIN and current_user.region_id:
+        from .database import Course, get_db
+        db = next(get_db())
+        course = db.query(Course).filter(Course.id == course_id).first()
+        if course and course.region_id == current_user.region_id:
+            return True
+    
+    if current_user.role in [UserRole.COURSE_MANAGER, UserRole.CLIENT_TENANT] and current_user.course_id == course_id:
+        return True  # Course managers and tenants have access to their own course
     
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
