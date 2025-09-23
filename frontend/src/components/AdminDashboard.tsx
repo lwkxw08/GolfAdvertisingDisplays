@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Alert, AlertDescription } from './ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Badge } from './ui/badge';
-import { Plus, Building, Monitor, Megaphone, BarChart3, LogOut } from 'lucide-react';
+import { Plus, Building, Monitor, Megaphone, BarChart3, LogOut, Bell, Settings, Shield, Database } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
   const { user, logout } = useAuth();
@@ -90,6 +90,9 @@ export const AdminDashboard: React.FC = () => {
       setDeviceHealth(healthData);
       setNoticeStyles(stylesData);
       setAuditLogs(logsData);
+      setCustomDashboards([]);
+      setRegions([]);
+      setSsoProviders([]);
     } catch (err) {
       console.error('Failed to load analytics:', err);
     }
@@ -177,7 +180,7 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         <Tabs defaultValue="courses" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8">
             <TabsTrigger value="courses">
               <Building className="w-4 h-4 mr-2" />
               Courses
@@ -190,6 +193,10 @@ export const AdminDashboard: React.FC = () => {
               <Megaphone className="w-4 h-4 mr-2" />
               Campaigns
             </TabsTrigger>
+            <TabsTrigger value="analytics">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Analytics
+            </TabsTrigger>
             <TabsTrigger value="notices">
               <Bell className="w-4 h-4 mr-2" />
               Notices
@@ -198,9 +205,13 @@ export const AdminDashboard: React.FC = () => {
               <Settings className="w-4 h-4 mr-2" />
               Device Mgmt
             </TabsTrigger>
-            <TabsTrigger value="analytics">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Analytics
+            <TabsTrigger value="audit-logs">
+              <Shield className="w-4 h-4 mr-2" />
+              Audit Logs
+            </TabsTrigger>
+            <TabsTrigger value="dashboards">
+              <Database className="w-4 h-4 mr-2" />
+              Dashboards
             </TabsTrigger>
           </TabsList>
 
@@ -506,12 +517,22 @@ export const AdminDashboard: React.FC = () => {
                   <div>
                     <label className="block text-sm font-medium mb-2">Font Family</label>
                     <select className="w-full p-2 border rounded">
-                      <option value="arial">Arial</option>
-                      <option value="helvetica">Helvetica</option>
-                      <option value="times">Times</option>
-                      <option value="courier">Courier</option>
-                      <option value="impact">Impact</option>
-                      <option value="comic_sans">Comic Sans</option>
+                      {noticeStyles.length > 0 ? (
+                        noticeStyles.map((style) => (
+                          <option key={style.id} value={style.font_family}>
+                            {style.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="arial">Arial</option>
+                          <option value="helvetica">Helvetica</option>
+                          <option value="times">Times</option>
+                          <option value="courier">Courier</option>
+                          <option value="impact">Impact</option>
+                          <option value="comic_sans">Comic Sans</option>
+                        </>
+                      )}
                     </select>
                   </div>
                   <div>
@@ -987,10 +1008,10 @@ export const AdminDashboard: React.FC = () => {
                               {device.is_online ? 'Online' : 'Offline'}
                             </span>
                           </td>
-                          <td className="px-4 py-2">85%</td>
-                          <td className="px-4 py-2">-65 dBm</td>
-                          <td className="px-4 py-2">22°C</td>
-                          <td className="px-4 py-2">2 min ago</td>
+                          <td className="px-4 py-2">{deviceHealth[device.id]?.battery || '85%'}</td>
+                          <td className="px-4 py-2">{deviceHealth[device.id]?.signal || '-65 dBm'}</td>
+                          <td className="px-4 py-2">{deviceHealth[device.id]?.temperature || '22°C'}</td>
+                          <td className="px-4 py-2">{deviceHealth[device.id]?.last_sync || '2 min ago'}</td>
                           <td className="px-4 py-2">
                             <Button size="sm" variant="outline">
                               Update Firmware
@@ -1053,6 +1074,139 @@ export const AdminDashboard: React.FC = () => {
                           <div className="bg-green-600 h-2 rounded-full" style={{width: '100%'}}></div>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="audit-logs">
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Audit Logs</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full table-auto">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-4 py-2 text-left">Timestamp</th>
+                        <th className="px-4 py-2 text-left">User</th>
+                        <th className="px-4 py-2 text-left">Action</th>
+                        <th className="px-4 py-2 text-left">Resource</th>
+                        <th className="px-4 py-2 text-left">Details</th>
+                        <th className="px-4 py-2 text-left">IP Address</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditLogs.map((log, index) => (
+                        <tr key={index} className="border-t">
+                          <td className="px-4 py-2">{new Date(log.timestamp).toLocaleString()}</td>
+                          <td className="px-4 py-2">{log.user_email || 'System'}</td>
+                          <td className="px-4 py-2">
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              log.action === 'CREATE' ? 'bg-green-100 text-green-800' :
+                              log.action === 'UPDATE' ? 'bg-blue-100 text-blue-800' :
+                              log.action === 'DELETE' ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2">{log.resource_type}</td>
+                          <td className="px-4 py-2">{log.details ? JSON.stringify(log.details).substring(0, 50) + '...' : '-'}</td>
+                          <td className="px-4 py-2">{log.ip_address || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="dashboards">
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Custom Dashboards</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                    <Database className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                    <h4 className="text-lg font-medium text-gray-900 mb-2">Create New Dashboard</h4>
+                    <p className="text-gray-600 mb-4">Build custom analytics views with widgets</p>
+                    <Button>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create Dashboard
+                    </Button>
+                  </div>
+                  {customDashboards.map((dashboard) => (
+                    <div key={dashboard.id} className="bg-white border rounded-lg p-6">
+                      <h4 className="text-lg font-medium mb-2">{dashboard.name}</h4>
+                      <p className="text-gray-600 mb-4">
+                        {dashboard.is_shared ? 'Shared Dashboard' : 'Private Dashboard'}
+                      </p>
+                      <div className="flex space-x-2">
+                        <Button size="sm" variant="outline">Edit</Button>
+                        <Button size="sm" variant="outline">View</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Dashboard Templates</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="border rounded-lg p-4">
+                    <h4 className="font-medium mb-2">Revenue Overview</h4>
+                    <p className="text-sm text-gray-600 mb-4">Track subscription revenue and growth metrics</p>
+                    <Button size="sm" variant="outline">Use Template</Button>
+                  </div>
+                  <div className="border rounded-lg p-4">
+                    <h4 className="font-medium mb-2">Device Performance</h4>
+                    <p className="text-sm text-gray-600 mb-4">Monitor device health and uptime statistics</p>
+                    <Button size="sm" variant="outline">Use Template</Button>
+                  </div>
+                  <div className="border rounded-lg p-4">
+                    <h4 className="font-medium mb-2">Campaign Analytics</h4>
+                    <p className="text-sm text-gray-600 mb-4">Analyze campaign performance and engagement</p>
+                    <Button size="sm" variant="outline">Use Template</Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold mb-4">Enterprise Configuration</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="text-lg font-medium mb-3">Regions ({regions.length})</h4>
+                    <div className="space-y-2">
+                      {regions.map((region) => (
+                        <div key={region.id} className="flex justify-between items-center p-2 border rounded">
+                          <span>{region.name}</span>
+                          <span className="text-sm text-gray-500">{region.code}</span>
+                        </div>
+                      ))}
+                      {regions.length === 0 && (
+                        <p className="text-gray-500 text-sm">No regions configured</p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-medium mb-3">SSO Providers ({ssoProviders.length})</h4>
+                    <div className="space-y-2">
+                      {ssoProviders.map((provider) => (
+                        <div key={provider.id} className="flex justify-between items-center p-2 border rounded">
+                          <span>{provider.name}</span>
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            provider.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {provider.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                      ))}
+                      {ssoProviders.length === 0 && (
+                        <p className="text-gray-500 text-sm">No SSO providers configured</p>
+                      )}
                     </div>
                   </div>
                 </div>

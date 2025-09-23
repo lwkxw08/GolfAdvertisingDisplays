@@ -43,7 +43,7 @@ const AppContent: React.FC = () => {
     return <LoginForm onShowRegistration={() => setShowRegistration(true)} />;
   }
 
-  if (user.role === 'admin') {
+  if (user.role === 'super_admin' || user.role === 'regional_admin' || user.role === 'course_manager') {
     return <AdminDashboard />;
   }
 

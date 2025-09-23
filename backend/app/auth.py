@@ -58,44 +58,71 @@ def get_current_user(email: str = Depends(verify_token), db: Session = Depends(g
     return user
 
 def require_admin(current_user: User = Depends(get_current_user)):
-    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.REGIONAL_ADMIN]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
-    return current_user
+    admin_roles = [UserRole.SUPER_ADMIN, UserRole.REGIONAL_ADMIN]
+    if hasattr(current_user.role, 'value'):
+        role_value = current_user.role.value
+    else:
+        role_value = str(current_user.role)
+    
+    if role_value in ['ADMIN', 'SUPER_ADMIN', 'REGIONAL_ADMIN'] or current_user.role in admin_roles:
+        return current_user
+    
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Admin access required"
+    )
 
 def require_super_admin(current_user: User = Depends(get_current_user)):
-    if current_user.role != UserRole.SUPER_ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Super admin access required"
-        )
-    return current_user
+    if hasattr(current_user.role, 'value'):
+        role_value = current_user.role.value
+    else:
+        role_value = str(current_user.role)
+    
+    if role_value in ['ADMIN', 'SUPER_ADMIN'] or current_user.role == UserRole.SUPER_ADMIN:
+        return current_user
+    
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Super admin access required"
+    )
 
 def require_course_manager(current_user: User = Depends(get_current_user)):
-    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.REGIONAL_ADMIN, UserRole.COURSE_MANAGER]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Course manager access required"
-        )
-    return current_user
+    manager_roles = [UserRole.SUPER_ADMIN, UserRole.REGIONAL_ADMIN, UserRole.COURSE_MANAGER]
+    if hasattr(current_user.role, 'value'):
+        role_value = current_user.role.value
+    else:
+        role_value = str(current_user.role)
+    
+    if role_value in ['ADMIN', 'SUPER_ADMIN', 'REGIONAL_ADMIN', 'COURSE_MANAGER'] or current_user.role in manager_roles:
+        return current_user
+    
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Course manager access required"
+    )
 
 def require_tenant_access(current_user: User = Depends(get_current_user)):
     return current_user
 
 def check_course_access(course_id: int, current_user: User):
-    if current_user.role == UserRole.SUPER_ADMIN:
-        return True  # Super admins have access to all courses
+    if hasattr(current_user.role, 'value'):
+        role_value = current_user.role.value
+    else:
+        role_value = str(current_user.role)
     
-    if current_user.role == UserRole.REGIONAL_ADMIN and current_user.region_id:
+    # Super admins have access to all courses
+    if role_value in ['ADMIN', 'SUPER_ADMIN'] or current_user.role == UserRole.SUPER_ADMIN:
+        return True
+    
+    if (role_value == 'REGIONAL_ADMIN' or current_user.role == UserRole.REGIONAL_ADMIN) and current_user.region_id:
         from .database import Course, get_db
         db = next(get_db())
         course = db.query(Course).filter(Course.id == course_id).first()
         if course and course.region_id == current_user.region_id:
             return True
     
-    if current_user.role in [UserRole.COURSE_MANAGER, UserRole.CLIENT_TENANT] and current_user.course_id == course_id:
+    if (role_value in ['COURSE_MANAGER', 'CLIENT_TENANT', 'CLIENT'] or 
+        current_user.role in [UserRole.COURSE_MANAGER, UserRole.CLIENT_TENANT]) and current_user.course_id == course_id:
         return True  # Course managers and tenants have access to their own course
     
     raise HTTPException(

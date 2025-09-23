@@ -20,6 +20,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 class UserRole(str, enum.Enum):
+    ADMIN = "admin"  # Legacy value for backward compatibility
     SUPER_ADMIN = "super_admin"
     REGIONAL_ADMIN = "regional_admin"
     COURSE_MANAGER = "course_manager"
