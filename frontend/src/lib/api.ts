@@ -231,6 +231,56 @@ class ApiClient {
     return this.request('/admin/analytics/courses');
   }
 
+  async getDevicePlaylistOptimized(deviceId: string, connectivity: 'wifi' | 'lte' = 'wifi') {
+    return this.request(`/api/device/${deviceId}/playlist?connectivity=${connectivity}`);
+  }
+
+  async updateDeviceStatus(deviceId: string, statusData: any) {
+    return this.request(`/api/device/${deviceId}/status`, {
+      method: 'POST',
+      body: JSON.stringify(statusData),
+    });
+  }
+
+  async getDeviceDiagnostics(deviceId: string) {
+    return this.request(`/api/device/${deviceId}/diagnostics`);
+  }
+
+  async processImageForEink(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const url = `${API_BASE_URL}/api/images/process-for-eink`;
+    const headers: Record<string, string> = {};
+
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async generateNoticeEinkImage(noticeId: number) {
+    return this.request(`/api/notices/${noticeId}/generate-eink-image`, {
+      method: 'POST',
+    });
+  }
+
+  async getConnectivityOptions() {
+    return this.request('/api/eink/connectivity-options');
+  }
+
   async getEmailTemplates() {
     return this.request('/admin/email-templates');
   }

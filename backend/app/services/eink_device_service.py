@@ -1,0 +1,418 @@
+from typing import Dict, List, Optional, Any
+from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
+from PIL import Image, ImageDraw, ImageFont
+import io
+import json
+import requests
+from ..database import Device, DeviceAnalytics, Course
+from .analytics_service import analytics_service
+import logging
+
+logger = logging.getLogger(__name__)
+
+class EInkDeviceService:
+    """Service for managing E-ink specific device operations"""
+    
+    E6_WIDTH = 1200
+    E6_HEIGHT = 1600
+    E6_COLORS = {
+        'BLACK': 0x000000,
+        'WHITE': 0xffffff,
+        'YELLOW': 0x00ffff,
+        'RED': 0x0000ff,
+        'BLUE': 0xff0000,
+        'GREEN': 0x00ff00
+    }
+    
+    def __init__(self):
+        self.refresh_intervals = {
+            'fast': 300,      # 5 minutes - for urgent notices
+            'normal': 900,    # 15 minutes - standard refresh
+            'slow': 3600,     # 1 hour - power saving mode
+            'deep_sleep': 21600  # 6 hours - overnight/maintenance
+        }
+    
+    def get_device_playlist_optimized(self, db: Session, device_id: str, 
+                                    connectivity_type: str = 'wifi') -> Dict[str, Any]:
+        """Get optimized playlist for E-ink device with connectivity awareness"""
+        device = db.query(Device).filter(Device.device_id == device_id).first()
+        if not device:
+            raise ValueError(f"Device {device_id} not found")
+        
+        device.last_sync = datetime.utcnow()
+        device.is_online = True
+        
+        self._record_connectivity_analytics(db, device, connectivity_type)
+        
+        playlist = self._get_optimized_content(db, device, connectivity_type)
+        
+        playlist['eink_config'] = self._get_eink_config(connectivity_type)
+        playlist['power_management'] = self._get_power_config(device, connectivity_type)
+        
+        db.commit()
+        return playlist
+    
+    def _get_optimized_content(self, db: Session, device: Device, 
+                             connectivity_type: str) -> Dict[str, Any]:
+        """Get content optimized for connectivity type and E-ink display"""
+        now = datetime.utcnow()
+        
+        from ..database import Notice
+        active_notices = db.query(Notice).filter(
+            Notice.device_id == device.id,
+            Notice.start_time <= now,
+            Notice.end_time > now,
+            Notice.is_active == True
+        ).order_by(Notice.created_at.desc()).all()
+        
+        from ..database import SponsorCampaign
+        active_campaigns = db.query(SponsorCampaign).filter(
+            SponsorCampaign.device_id == device.id,
+            SponsorCampaign.start_date <= now,
+            SponsorCampaign.end_date > now,
+            SponsorCampaign.is_active == True
+        ).order_by(SponsorCampaign.priority.desc()).all()
+        
+        playlist_items = []
+        
+        for notice in active_notices:
+            item = {
+                'type': 'notice',
+                'id': notice.id,
+                'content': notice.content,
+                'title': notice.title,
+                'expires_at': notice.end_time.isoformat(),
+                'priority': 100,  # Highest priority
+                'eink_optimized': True
+            }
+            
+            if notice.style_id:
+                item['style'] = self._get_notice_style(db, notice.style_id)
+            
+            playlist_items.append(item)
+        
+        max_items = 3 if connectivity_type == 'lte' else 5  # Limit for LTE bandwidth
+        
+        if len(playlist_items) < max_items:
+            for campaign in active_campaigns[:max_items - len(playlist_items)]:
+                item = {
+                    'type': 'campaign',
+                    'id': campaign.id,
+                    'content': campaign.creative_path,
+                    'sponsor_name': campaign.sponsor_name,
+                    'priority': campaign.priority,
+                    'eink_optimized': True
+                }
+                
+                item['eink_url'] = self._get_eink_optimized_url(campaign.creative_path)
+                playlist_items.append(item)
+        
+        return {
+            'device_id': device.device_id,
+            'last_updated': now.isoformat(),
+            'items': playlist_items,
+            'connectivity_type': connectivity_type,
+            'total_items': len(playlist_items)
+        }
+    
+    def _get_eink_config(self, connectivity_type: str) -> Dict[str, Any]:
+        """Get E-ink specific configuration based on connectivity"""
+        base_config = {
+            'display_width': self.E6_WIDTH,
+            'display_height': self.E6_HEIGHT,
+            'color_mode': 'e6_spectra',
+            'supported_colors': list(self.E6_COLORS.keys()),
+            'refresh_time_seconds': 19,
+            'partial_refresh_supported': False
+        }
+        
+        if connectivity_type == 'lte':
+            base_config.update({
+                'refresh_interval': self.refresh_intervals['normal'],
+                'image_compression': 'high',
+                'batch_updates': True,
+                'retry_attempts': 3,
+                'timeout_seconds': 30
+            })
+        else:  # wifi
+            base_config.update({
+                'refresh_interval': self.refresh_intervals['fast'],
+                'image_compression': 'medium',
+                'batch_updates': False,
+                'retry_attempts': 5,
+                'timeout_seconds': 15
+            })
+        
+        return base_config
+    
+    def _get_power_config(self, device: Device, connectivity_type: str) -> Dict[str, Any]:
+        """Get power management configuration for solar-powered Pi Zero 2W"""
+        current_hour = datetime.utcnow().hour
+        
+        if 22 <= current_hour or current_hour <= 6:  # Night time
+            power_mode = 'deep_sleep'
+        elif connectivity_type == 'lte':
+            power_mode = 'slow'  # Conserve battery on LTE
+        else:
+            power_mode = 'normal'
+        
+        config = {
+            'power_mode': power_mode,
+            'refresh_interval': self.refresh_intervals[power_mode],
+            'sleep_between_refreshes': True,
+            'solar_charging_optimization': True,
+            'battery_monitoring': True,
+            'low_power_threshold': 20,  # Percentage
+            'emergency_mode_threshold': 10
+        }
+        
+        if connectivity_type == 'lte':
+            config.update({
+                'lte_power_saving': True,
+                'connection_pooling': True,
+                'data_compression': True,
+                'scheduled_sync_windows': [8, 12, 16, 20]  # Hours
+            })
+        else:  # wifi
+            config.update({
+                'wifi_power_saving': True,
+                'keep_alive_interval': 300,
+                'connection_timeout': 30
+            })
+        
+        return config
+    
+    def _get_notice_style(self, db: Session, style_id: int) -> Optional[Dict[str, Any]]:
+        """Get notice style optimized for E-ink display"""
+        from ..database import NoticeStyle
+        style = db.query(NoticeStyle).filter(NoticeStyle.id == style_id).first()
+        if not style:
+            return None
+        
+        eink_style = {
+            'font_family': style.font_family.value if style.font_family else 'ARIAL',
+            'font_size': min(style.font_size or 24, 48),  # Limit for readability
+            'font_weight': style.font_weight or 'normal',
+            'text_color': self._convert_color_to_e6(style.text_color or '#000000'),
+            'background_color': self._convert_color_to_e6(style.background_color or '#FFFFFF'),
+            'text_align': style.text_align or 'center',
+            'padding': style.padding or 10,
+            'eink_optimized': True
+        }
+        
+        return eink_style
+    
+    def _convert_color_to_e6(self, hex_color: str) -> str:
+        """Convert hex color to nearest E6 Spectra color"""
+        if not hex_color or hex_color == '#000000':
+            return 'BLACK'
+        elif hex_color == '#FFFFFF':
+            return 'WHITE'
+        elif 'ff0000' in hex_color.lower():
+            return 'RED'
+        elif '00ff00' in hex_color.lower():
+            return 'GREEN'
+        elif '0000ff' in hex_color.lower():
+            return 'BLUE'
+        elif 'ffff00' in hex_color.lower():
+            return 'YELLOW'
+        else:
+            return 'BLACK'  # Default fallback
+    
+    def _get_eink_optimized_url(self, original_path: str) -> str:
+        """Get E-ink optimized version of image URL"""
+        if not original_path:
+            return original_path
+        
+        if original_path.startswith('http'):
+            return f"{original_path}?format=e6&width={self.E6_WIDTH}&height={self.E6_HEIGHT}"
+        else:
+            return original_path.replace('.jpg', '_e6.jpg').replace('.png', '_e6.png')
+    
+    def _record_connectivity_analytics(self, db: Session, device: Device, 
+                                     connectivity_type: str):
+        """Record connectivity analytics for monitoring"""
+        try:
+            analytics = DeviceAnalytics(
+                device_id=device.id,
+                sync_timestamp=datetime.utcnow(),
+                uptime_hours=1.0,  # Assume 1 hour uptime per sync
+                impressions_count=1,
+                notices_displayed=0,
+                campaigns_displayed=0,
+                connectivity_type=connectivity_type,
+                power_level=85.0,  # Default - would come from device
+                signal_strength=-65 if connectivity_type == 'lte' else -45
+            )
+            db.add(analytics)
+            
+        except Exception as e:
+            logger.error(f"Failed to record connectivity analytics: {e}")
+    
+    def process_device_status_update(self, db: Session, device_id: str, 
+                                   status_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process status update from E-ink device"""
+        device = db.query(Device).filter(Device.device_id == device_id).first()
+        if not device:
+            raise ValueError(f"Device {device_id} not found")
+        
+        device.last_sync = datetime.utcnow()
+        device.is_online = True
+        
+        battery_level = status_data.get('battery_level', 85)
+        connectivity_type = status_data.get('connectivity_type', 'wifi')
+        signal_strength = status_data.get('signal_strength', -50)
+        display_status = status_data.get('display_status', 'ok')
+        
+        analytics = DeviceAnalytics(
+            device_id=device.id,
+            sync_timestamp=datetime.utcnow(),
+            uptime_hours=status_data.get('uptime_hours', 1.0),
+            impressions_count=status_data.get('impressions_count', 1),
+            notices_displayed=status_data.get('notices_displayed', 0),
+            campaigns_displayed=status_data.get('campaigns_displayed', 1),
+            connectivity_type=connectivity_type,
+            power_level=battery_level,
+            signal_strength=signal_strength,
+            error_count=status_data.get('error_count', 0),
+            last_refresh_duration=status_data.get('last_refresh_duration', 19.0)
+        )
+        db.add(analytics)
+        
+        response = {
+            'status': 'success',
+            'next_sync_interval': self._calculate_next_sync_interval(
+                battery_level, connectivity_type, display_status
+            ),
+            'power_mode': self._determine_power_mode(battery_level, connectivity_type),
+            'config_updates': {}
+        }
+        
+        if battery_level < 20:
+            response['config_updates']['power_mode'] = 'emergency'
+            response['next_sync_interval'] = self.refresh_intervals['deep_sleep']
+        
+        if display_status == 'error':
+            response['config_updates']['diagnostic_mode'] = True
+            response['next_sync_interval'] = self.refresh_intervals['fast']
+        
+        db.commit()
+        return response
+    
+    def _calculate_next_sync_interval(self, battery_level: float, 
+                                    connectivity_type: str, display_status: str) -> int:
+        """Calculate optimal next sync interval based on device status"""
+        base_interval = self.refresh_intervals['normal']
+        
+        if battery_level < 20:
+            base_interval = self.refresh_intervals['deep_sleep']
+        elif battery_level < 50:
+            base_interval = self.refresh_intervals['slow']
+        
+        if connectivity_type == 'lte' and battery_level < 70:
+            base_interval = max(base_interval, self.refresh_intervals['slow'])
+        
+        if display_status == 'error':
+            base_interval = self.refresh_intervals['fast']
+        
+        return base_interval
+    
+    def _determine_power_mode(self, battery_level: float, connectivity_type: str) -> str:
+        """Determine optimal power mode for device"""
+        if battery_level < 10:
+            return 'emergency'
+        elif battery_level < 20:
+            return 'deep_sleep'
+        elif battery_level < 50 and connectivity_type == 'lte':
+            return 'slow'
+        else:
+            return 'normal'
+    
+    def get_device_diagnostics(self, db: Session, device_id: str) -> Dict[str, Any]:
+        """Get comprehensive diagnostics for E-ink device"""
+        device = db.query(Device).filter(Device.device_id == device_id).first()
+        if not device:
+            raise ValueError(f"Device {device_id} not found")
+        
+        recent_analytics = db.query(DeviceAnalytics).filter(
+            DeviceAnalytics.device_id == device.id
+        ).order_by(DeviceAnalytics.sync_timestamp.desc()).limit(10).all()
+        
+        if recent_analytics:
+            avg_battery = sum(a.power_level or 85 for a in recent_analytics) / len(recent_analytics)
+            avg_signal = sum(a.signal_strength or -50 for a in recent_analytics) / len(recent_analytics)
+            total_errors = sum(a.error_count or 0 for a in recent_analytics)
+            avg_refresh_time = sum(a.last_refresh_duration or 19 for a in recent_analytics) / len(recent_analytics)
+        else:
+            avg_battery = avg_signal = total_errors = avg_refresh_time = 0
+        
+        health_score = self._calculate_health_score(avg_battery, avg_signal, total_errors, avg_refresh_time)
+        
+        return {
+            'device_id': device.device_id,
+            'device_name': device.name,
+            'is_online': device.is_online,
+            'last_sync': device.last_sync.isoformat() if device.last_sync else None,
+            'health_score': health_score,
+            'metrics': {
+                'average_battery_level': round(avg_battery, 1),
+                'average_signal_strength': round(avg_signal, 1),
+                'total_errors_24h': total_errors,
+                'average_refresh_time': round(avg_refresh_time, 1),
+                'sync_count_24h': len(recent_analytics)
+            },
+            'recommendations': self._get_device_recommendations(avg_battery, avg_signal, total_errors),
+            'eink_specific': {
+                'display_type': 'Waveshare 13.3" E6 Spectra',
+                'resolution': f"{self.E6_WIDTH}x{self.E6_HEIGHT}",
+                'color_support': '6-color (E6)',
+                'refresh_time': '19 seconds',
+                'power_consumption': '<0.5W during refresh'
+            }
+        }
+    
+    def _calculate_health_score(self, battery: float, signal: float, 
+                              errors: int, refresh_time: float) -> int:
+        """Calculate device health score (0-100)"""
+        score = 100
+        
+        if battery < 20:
+            score -= 30
+        elif battery < 50:
+            score -= 15
+        
+        if signal < -80:  # Poor signal
+            score -= 20
+        elif signal < -60:  # Fair signal
+            score -= 10
+        
+        score -= min(errors * 5, 25)  # Max 25 point deduction for errors
+        
+        if refresh_time > 25:
+            score -= 10
+        elif refresh_time > 30:
+            score -= 20
+        
+        return max(0, score)
+    
+    def _get_device_recommendations(self, battery: float, signal: float, 
+                                  errors: int) -> List[str]:
+        """Get recommendations for device optimization"""
+        recommendations = []
+        
+        if battery < 30:
+            recommendations.append("Low battery - check solar panel positioning and cleaning")
+        
+        if signal < -70:
+            recommendations.append("Poor signal strength - consider antenna repositioning")
+        
+        if errors > 5:
+            recommendations.append("High error count - check device logs and connectivity")
+        
+        if not recommendations:
+            recommendations.append("Device operating normally")
+        
+        return recommendations
+
+eink_device_service = EInkDeviceService()

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Request
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
@@ -7,7 +7,7 @@ from sqlalchemy import func, and_, or_
 from datetime import datetime, timedelta
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import os
 import shutil
 from pathlib import Path
@@ -45,6 +45,8 @@ from .services.auth_service import auth_service
 from .services.dashboard_service import dashboard_service
 from .services.device_management_service import device_management_service
 from .services.advanced_scheduling_service import advanced_scheduling_service
+from .services.eink_device_service import eink_device_service
+from .services.image_processing_service import image_processing_service
 from .services.audit_service import audit_service
 from .services.sso_service import sso_service
 from .services.region_service import region_service
@@ -398,63 +400,206 @@ async def create_enhanced_notice(
         raise
 
 @app.get("/api/device/{device_id}/playlist", response_model=DevicePlaylist)
-async def get_device_playlist(device_id: str, db: Session = Depends(get_db)):
-    device = db.query(Device).filter(Device.device_id == device_id).first()
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
-    
-    device.last_sync = datetime.now()
-    device.is_online = True
-    db.commit()
-    
-    now = datetime.now()
-    playlist_items = []
-    
-    active_notices = db.query(Notice).filter(
-        Notice.device_id == device.id,
-        Notice.start_time <= now,
-        Notice.end_time > now,
-        Notice.is_active == True
-    ).all()
-    
-    for notice in active_notices:
-        playlist_items.append(PlaylistItem(
-            type="notice",
-            id=notice.id,
-            content=notice.content,
-            title=notice.title,
-            expires_at=notice.end_time
-        ))
-    
-    if not playlist_items:
-        active_campaigns = db.query(SponsorCampaign).filter(
-            SponsorCampaign.device_id == device.id,
-            SponsorCampaign.start_date <= now,
-            SponsorCampaign.end_date > now,
-            SponsorCampaign.is_active == True
-        ).order_by(SponsorCampaign.priority).all()
+async def get_device_playlist(
+    device_id: str, 
+    connectivity: str = Query("wifi", description="Connectivity type: wifi, lte, ethernet"),
+    db: Session = Depends(get_db)
+):
+    """Get device playlist optimized for E-ink displays with connectivity awareness"""
+    try:
+        from .services.eink_device_service import eink_device_service
+        playlist = eink_device_service.get_device_playlist_optimized(
+            db=db, 
+            device_id=device_id, 
+            connectivity_type=connectivity
+        )
+        return playlist
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        print(f"ERROR in get_device_playlist: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/device/{device_id}/status")
+async def update_device_status(
+    device_id: str,
+    status_data: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """Update device status with E-ink specific metrics"""
+    try:
+        from .services.eink_device_service import eink_device_service
+        response = eink_device_service.process_device_status_update(
+            db=db,
+            device_id=device_id,
+            status_data=status_data
+        )
+        return response
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        print(f"ERROR in update_device_status: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/api/device/{device_id}/diagnostics")
+async def get_device_diagnostics(
+    device_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get comprehensive E-ink device diagnostics"""
+    try:
+        from .services.eink_device_service import eink_device_service
+        diagnostics = eink_device_service.get_device_diagnostics(db=db, device_id=device_id)
+        return diagnostics
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        print(f"ERROR in get_device_diagnostics: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/images/process-for-eink")
+async def process_image_for_eink(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Process uploaded image for E-ink display"""
+    try:
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
         
-        for campaign in active_campaigns:
-            playlist_items.append(PlaylistItem(
-                type="campaign",
-                id=campaign.id,
-                content=campaign.creative_path,
-                sponsor_name=campaign.sponsor_name
-            ))
-    
-    analytics_service.record_device_sync(
-        db=db,
-        device_id=device.id,
-        impressions=len(playlist_items),
-        notices=len([item for item in playlist_items if item.type == "notice"]),
-        campaigns=len([item for item in playlist_items if item.type == "campaign"])
-    )
-    
-    return DevicePlaylist(
-        device_id=device_id,
-        last_updated=now,
-        items=playlist_items
-    )
+        temp_path = f"/tmp/{file.filename}"
+        with open(temp_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        processed_path = image_processing_service.process_image_for_e6(temp_path)
+        
+        image_info = image_processing_service.get_image_info(processed_path)
+        
+        os.remove(temp_path)
+        
+        return {
+            'status': 'success',
+            'processed_image_path': processed_path,
+            'image_info': image_info,
+            'message': 'Image processed for E-ink display'
+        }
+        
+    except Exception as e:
+        print(f"ERROR in process_image_for_eink: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/notices/{notice_id}/generate-eink-image")
+async def generate_notice_eink_image(
+    notice_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Generate E-ink optimized image for notice"""
+    try:
+        notice = db.query(Notice).filter(Notice.id == notice_id).first()
+        if not notice:
+            raise HTTPException(status_code=404, detail="Notice not found")
+        
+        from .auth import check_course_access
+        check_course_access(notice.course_id, current_user)
+        
+        notice_data = {
+            'id': notice.id,
+            'title': notice.title,
+            'content': notice.content
+        }
+        
+        if notice.style_id:
+            style = db.query(NoticeStyle).filter(NoticeStyle.id == notice.style_id).first()
+            if style:
+                notice_data['style'] = {
+                    'font_size': style.font_size,
+                    'text_color': style.font_family.value if style.font_family else 'BLACK',
+                    'background_color': 'WHITE',
+                    'text_align': style.text_align or 'center'
+                }
+        
+        image_path = image_processing_service.create_notice_image(notice_data)
+        
+        return {
+            'status': 'success',
+            'image_path': image_path,
+            'notice_id': notice_id,
+            'message': 'E-ink notice image generated'
+        }
+        
+    except Exception as e:
+        print(f"ERROR in generate_notice_eink_image: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/eink/connectivity-options")
+async def get_connectivity_options():
+    """Get available connectivity options for E-ink devices"""
+    return {
+        'connectivity_types': [
+            {
+                'type': 'wifi',
+                'name': 'WiFi',
+                'description': 'Standard WiFi connection',
+                'power_consumption': 'Medium',
+                'data_speed': 'High',
+                'range': 'Limited to WiFi coverage',
+                'recommended_for': 'Indoor installations with reliable WiFi'
+            },
+            {
+                'type': 'lte',
+                'name': 'LTE 4G',
+                'description': 'Cellular LTE connection',
+                'power_consumption': 'High',
+                'data_speed': 'Medium-High',
+                'range': 'Wide coverage area',
+                'recommended_for': 'Outdoor installations without WiFi'
+            },
+            {
+                'type': 'ethernet',
+                'name': 'Ethernet',
+                'description': 'Wired ethernet connection',
+                'power_consumption': 'Low',
+                'data_speed': 'Very High',
+                'range': 'Limited to cable length',
+                'recommended_for': 'Permanent installations with network access'
+            }
+        ],
+        'power_modes': [
+            {
+                'mode': 'normal',
+                'refresh_interval': '15 minutes',
+                'description': 'Standard operation mode'
+            },
+            {
+                'mode': 'slow',
+                'refresh_interval': '1 hour',
+                'description': 'Power saving mode for low battery'
+            },
+            {
+                'mode': 'deep_sleep',
+                'refresh_interval': '6 hours',
+                'description': 'Deep sleep mode for overnight/maintenance'
+            },
+            {
+                'mode': 'emergency',
+                'refresh_interval': '24 hours',
+                'description': 'Emergency mode for critical battery levels'
+            }
+        ],
+        'hardware_specs': {
+            'display': 'Waveshare 13.3" E-ink Spectra 6 (E6)',
+            'resolution': '1600x1200 pixels',
+            'colors': '6-color (Black, White, Red, Yellow, Blue, Green)',
+            'refresh_time': '19 seconds',
+            'controller': 'Raspberry Pi Zero 2W',
+            'power_consumption': '<0.5W during refresh, <0.1W standby',
+            'operating_temperature': '-10°C to 50°C',
+            'storage_temperature': '-25°C to 70°C'
+        }
+    }
 
 @app.get("/admin/subscriptions", response_model=List[SubscriptionResponse])
 async def list_subscriptions(

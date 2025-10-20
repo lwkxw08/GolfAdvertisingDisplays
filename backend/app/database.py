@@ -194,6 +194,11 @@ class DeviceAnalytics(Base):
     impressions_count = Column(Integer, default=0)
     notices_displayed = Column(Integer, default=0)
     campaigns_displayed = Column(Integer, default=0)
+    connectivity_type = Column(String(20), default="wifi")
+    power_level = Column(Float, default=85.0)
+    signal_strength = Column(Float, default=-50.0)
+    error_count = Column(Integer, default=0)
+    last_refresh_duration = Column(Float, default=19.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     device = relationship("Device")
