@@ -84,12 +84,15 @@ const AdminDashboard = () => {
   const handleCreateDevice = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      console.log('Creating device with data:', newDevice);
       const createdDeviceData = await apiClient.createDevice(newDevice);
+      console.log('Device created successfully:', createdDeviceData);
       setCreatedDevice(createdDeviceData);
-      setPiConfigDialogOpen(true);
+      console.log('Set createdDevice state - useEffect will open dialog');
       setNewDevice({ name: '', device_id: '', course_id: 0, location: '' });
       loadData();
     } catch (err) {
+      console.error('Error creating device:', err);
       setError('Failed to create device');
     }
   };
@@ -198,6 +201,13 @@ const AdminDashboard = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (createdDevice) {
+      console.log('createdDevice changed, opening dialog:', createdDevice);
+      setPiConfigDialogOpen(true);
+    }
+  }, [createdDevice]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -641,7 +651,12 @@ const AdminDashboard = () => {
 
       <PiImagerConfigDialog
         open={piConfigDialogOpen}
-        onOpenChange={setPiConfigDialogOpen}
+        onOpenChange={(open) => {
+          setPiConfigDialogOpen(open);
+          if (!open) {
+            setCreatedDevice(null);
+          }
+        }}
         device={createdDevice}
       />
 
