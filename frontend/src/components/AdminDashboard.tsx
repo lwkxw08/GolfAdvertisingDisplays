@@ -6,6 +6,8 @@ import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Plus, Building, Monitor, Megaphone, BarChart3, LogOut, Bell, Settings, Shield, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { ImagePreviewDialog } from './ImagePreviewDialog';
+import { PiImagerConfigDialog } from './PiImagerConfigDialog';
 import { apiClient, Course, Device, SponsorCampaign } from '../lib/api';
 
 const AdminDashboard = () => {
@@ -29,10 +31,18 @@ const AdminDashboard = () => {
     end_date: '',
     creative_file: null as File | null
   });
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [campaignLoading, setCampaignLoading] = useState(false);
+  const [pendingCampaignData, setPendingCampaignData] = useState<any>(null);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{type: 'course' | 'device', id: number, name: string} | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const [piConfigDialogOpen, setPiConfigDialogOpen] = useState(false);
+  const [createdDevice, setCreatedDevice] = useState<Device | null>(null);
 
   const auditLogs = [
     { action: 'Course Created', user: 'admin@golfcms.com', timestamp: '2024-01-15 10:30:00' },
@@ -74,7 +84,9 @@ const AdminDashboard = () => {
   const handleCreateDevice = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await apiClient.createDevice(newDevice);
+      const createdDeviceData = await apiClient.createDevice(newDevice);
+      setCreatedDevice(createdDeviceData);
+      setPiConfigDialogOpen(true);
       setNewDevice({ name: '', device_id: '', course_id: 0, location: '' });
       loadData();
     } catch (err) {
@@ -84,17 +96,48 @@ const AdminDashboard = () => {
 
   const handleCreateCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!newCampaign.creative_file) {
+      setError('Please select an image file');
+      return;
+    }
+    
     try {
+      setPreviewLoading(true);
+      const previewResult = await apiClient.previewImageForEink(newCampaign.creative_file);
+      
+      setPreviewData(previewResult);
+      setPendingCampaignData({
+        sponsor_name: newCampaign.sponsor_name,
+        device_id: newCampaign.device_id,
+        start_date: newCampaign.start_date,
+        end_date: newCampaign.end_date,
+        creative_file: newCampaign.creative_file
+      });
+      setPreviewDialogOpen(true);
+      setError('');
+      
+    } catch (err) {
+      setError('Failed to generate preview. Please check your image format.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handlePreviewApprove = async () => {
+    if (!pendingCampaignData) return;
+    
+    try {
+      setCampaignLoading(true);
       const formData = new FormData();
-      formData.append('sponsor_name', newCampaign.sponsor_name);
-      formData.append('device_id', newCampaign.device_id);
-      formData.append('start_date', newCampaign.start_date);
-      formData.append('end_date', newCampaign.end_date);
-      if (newCampaign.creative_file) {
-        formData.append('creative_file', newCampaign.creative_file);
-      }
+      formData.append('sponsor_name', pendingCampaignData.sponsor_name);
+      formData.append('device_id', pendingCampaignData.device_id);
+      formData.append('start_date', pendingCampaignData.start_date);
+      formData.append('end_date', pendingCampaignData.end_date);
+      formData.append('creative_file', pendingCampaignData.creative_file);
       
       await apiClient.createCampaign(formData);
+      
       setNewCampaign({
         sponsor_name: '',
         device_id: '',
@@ -102,10 +145,22 @@ const AdminDashboard = () => {
         end_date: '',
         creative_file: null
       });
+      setPreviewDialogOpen(false);
+      setPendingCampaignData(null);
+      setPreviewData(null);
       loadData();
+      
     } catch (err) {
       setError('Failed to create campaign');
+    } finally {
+      setCampaignLoading(false);
     }
+  };
+
+  const handlePreviewReject = () => {
+    setPreviewDialogOpen(false);
+    setPendingCampaignData(null);
+    setPreviewData(null);
   };
 
   const handleDeleteClick = (type: 'course' | 'device', id: number, name: string) => {
@@ -325,6 +380,12 @@ const AdminDashboard = () => {
                       onChange={(e) => setNewDevice({ ...newDevice, device_id: e.target.value })}
                       required
                     />
+                    <Input
+                      placeholder="Location (e.g., Tee Box 1)"
+                      value={newDevice.location}
+                      onChange={(e) => setNewDevice({ ...newDevice, location: e.target.value })}
+                      required
+                    />
                     <select
                       className="px-3 py-2 border border-gray-300 rounded-md"
                       value={newDevice.course_id}
@@ -450,9 +511,9 @@ const AdminDashboard = () => {
                     onChange={(e) => setNewCampaign({ ...newCampaign, creative_file: e.target.files?.[0] || null })}
                     required
                   />
-                  <Button type="submit">
+                  <Button type="submit" disabled={previewLoading}>
                     <Plus className="w-4 h-4 mr-2" />
-                    Create Campaign
+                    {previewLoading ? 'Generating Preview...' : 'Preview Campaign'}
                   </Button>
                 </form>
               </CardContent>
@@ -568,6 +629,21 @@ const AdminDashboard = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      <ImagePreviewDialog
+        open={previewDialogOpen}
+        onOpenChange={setPreviewDialogOpen}
+        previewData={previewData}
+        onApprove={handlePreviewApprove}
+        onReject={handlePreviewReject}
+        loading={campaignLoading}
+      />
+
+      <PiImagerConfigDialog
+        open={piConfigDialogOpen}
+        onOpenChange={setPiConfigDialogOpen}
+        device={createdDevice}
+      />
 
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>

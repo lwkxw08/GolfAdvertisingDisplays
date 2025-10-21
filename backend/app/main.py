@@ -527,6 +527,43 @@ async def process_image_for_eink(
         print(f"ERROR in process_image_for_eink: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/images/preview-for-eink")
+async def preview_image_for_eink(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Generate E6 preview image for confirmation"""
+    try:
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        temp_path = f"/tmp/preview_{file.filename}"
+        with open(temp_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        processed_path = image_processing_service.process_image_for_e6(temp_path)
+        
+        with open(processed_path, "rb") as img_file:
+            import base64
+            img_data = base64.b64encode(img_file.read()).decode()
+        
+        image_info = image_processing_service.get_image_info(processed_path)
+        
+        os.remove(temp_path)
+        os.remove(processed_path)
+        
+        return {
+            'status': 'success',
+            'preview_image': f"data:image/png;base64,{img_data}",
+            'image_info': image_info,
+            'e6_optimized': True
+        }
+        
+    except Exception as e:
+        print(f"ERROR in preview_image_for_eink: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/notices/{notice_id}/generate-eink-image")
 async def generate_notice_eink_image(
     notice_id: int,

@@ -27,6 +27,7 @@ export interface Device {
   name: string;
   device_id: string;
   course_id: number;
+  location: string;
   is_online: boolean;
   last_sync?: string;
   created_at: string;
@@ -164,6 +165,7 @@ class ApiClient {
     name: string;
     device_id: string;
     course_id: number;
+    location: string;
   }): Promise<Device> {
     return this.request('/admin/devices', {
       method: 'POST',
@@ -261,6 +263,36 @@ class ApiClient {
     formData.append('file', file);
     
     const url = `${API_BASE_URL}/api/images/process-for-eink`;
+    const headers: Record<string, string> = {};
+
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async previewImageForEink(file: File): Promise<{
+    status: string;
+    preview_image: string;
+    image_info: any;
+    e6_optimized: boolean;
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const url = `${API_BASE_URL}/api/images/preview-for-eink`;
     const headers: Record<string, string> = {};
 
     if (this.token) {
