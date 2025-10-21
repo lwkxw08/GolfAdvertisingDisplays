@@ -4,7 +4,7 @@
 import requests
 import json
 
-API_BASE = "https://app-mtdyxjgp.fly.dev"
+API_BASE = "https://golfadvertisingdisplays.onrender.com"
 
 def test_connectivity_options():
     """Test the connectivity options endpoint"""
