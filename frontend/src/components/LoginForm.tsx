@@ -23,8 +23,12 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onShowRegistration }) => {
 
     try {
       await login(email, password);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+    } catch (err: any) {
+      if (err.name === 'AbortError' || err.message.includes('timeout')) {
+        setError('Login request timed out. Please check your connection and try again.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Login failed');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -78,6 +82,12 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onShowRegistration }) => {
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? 'Signing in...' : 'Sign In'}
             </Button>
+
+            {isLoading && (
+              <div className="text-sm text-gray-600 text-center mt-2">
+                This may take a moment on first load...
+              </div>
+            )}
 
             <div className="text-center mt-4">
               <button

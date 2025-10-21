@@ -86,7 +86,7 @@ class ApiClient {
     localStorage.removeItem('token');
   }
 
-  private async request(endpoint: string, options: RequestInit = {}) {
+  private async request(endpoint: string, options: RequestInit = {}, retries = 2) {
     const url = `${API_BASE_URL}${endpoint}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -97,17 +97,27 @@ class ApiClient {
       headers.Authorization = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          headers,
+          signal: AbortSignal.timeout(30000),
+        });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-      throw new Error(error.detail || `HTTP ${response.status}`);
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+          throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+
+        return response.json();
+      } catch (error: any) {
+        if (attempt === retries || (error.name !== 'AbortError' && !error.message.includes('fetch'))) {
+          throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      }
     }
-
-    return response.json();
   }
 
   async login(email: string, password: string) {
