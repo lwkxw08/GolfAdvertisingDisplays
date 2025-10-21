@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginForm } from './components/LoginForm';
-import { AdminDashboard } from './components/AdminDashboard';
+import AdminDashboard from './components/AdminDashboard';
 import { TenantDashboard } from './components/TenantDashboard';
 import { CourseRegistrationForm } from './components/CourseRegistrationForm';
 import { OnboardingWizard } from './components/OnboardingWizard';

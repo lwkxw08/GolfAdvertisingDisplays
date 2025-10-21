@@ -183,6 +183,24 @@ async def get_course(
         raise HTTPException(status_code=404, detail="Course not found")
     return course
 
+@app.delete("/admin/courses/{course_id}")
+async def delete_course(
+    course_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    devices_count = db.query(Device).filter(Device.course_id == course_id).count()
+    if devices_count > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot delete course with {devices_count} active devices")
+    
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    db.delete(course)
+    db.commit()
+    return {"message": "Course deleted successfully"}
+
 @app.post("/admin/devices", response_model=DeviceResponse)
 async def create_device(
     device_data: DeviceCreate,
@@ -217,6 +235,24 @@ async def list_course_devices(
     from .auth import check_course_access
     check_course_access(course_id, current_user)
     return db.query(Device).filter(Device.course_id == course_id).all()
+
+@app.delete("/admin/devices/{device_id}")
+async def delete_device(
+    device_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    db.query(SponsorCampaign).filter(SponsorCampaign.device_id == device_id).delete()
+    db.query(Notice).filter(Notice.device_id == device_id).delete()
+    db.query(DeviceAnalytics).filter(DeviceAnalytics.device_id == device_id).delete()
+    
+    db.delete(device)
+    db.commit()
+    return {"message": "Device deleted successfully"}
 
 @app.post("/admin/campaigns", response_model=SponsorCampaignResponse)
 async def create_campaign(
@@ -1146,3 +1182,38 @@ async def get_sso_authorization_url(
     
     auth_url = sso_service.get_authorization_url(provider, redirect_uri, state)
     return {"authorization_url": auth_url}
+@app.delete("/admin/courses/{course_id}")
+async def delete_course(
+    course_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    devices = db.query(Device).filter(Device.course_id == course_id).count()
+    if devices > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot delete course with {devices} active devices")
+    
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    db.delete(course)
+    db.commit()
+    return {"message": "Course deleted successfully"}
+
+@app.delete("/admin/devices/{device_id}")
+async def delete_device(
+    device_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    db.query(SponsorCampaign).filter(SponsorCampaign.device_id == device_id).delete()
+    db.query(Notice).filter(Notice.device_id == device_id).delete()
+    db.query(DeviceAnalytics).filter(DeviceAnalytics.device_id == device_id).delete()
+    
+    db.delete(device)
+    db.commit()
+    return {"message": "Device deleted successfully"}

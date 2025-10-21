@@ -401,6 +401,18 @@ class ApiClient {
       body: JSON.stringify(noticeData),
     });
   }
+
+  async deleteCourse(courseId: number): Promise<{message: string}> {
+    return this.request(`/admin/courses/${courseId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async deleteDevice(deviceId: number): Promise<{message: string}> {
+    return this.request(`/admin/devices/${deviceId}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
