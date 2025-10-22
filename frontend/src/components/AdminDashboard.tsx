@@ -175,19 +175,27 @@ const AdminDashboard = () => {
     if (!deleteTarget) return;
     
     setDeleteLoading(true);
+    setError('');
     try {
+      console.log(`Attempting to delete ${deleteTarget.type} with ID:`, deleteTarget.id);
       if (deleteTarget.type === 'course') {
-        await apiClient.deleteCourse(deleteTarget.id);
+        const result = await apiClient.deleteCourse(deleteTarget.id);
+        console.log('Course delete result:', result);
       } else {
-        await apiClient.deleteDevice(deleteTarget.id);
+        const result = await apiClient.deleteDevice(deleteTarget.id);
+        console.log('Device delete result:', result);
       }
       
+      console.log('Delete successful, closing dialog and reloading data');
       setDeleteDialogOpen(false);
       setDeleteTarget(null);
-      loadData();
+      await loadData();
       setError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to delete ${deleteTarget.type}`);
+      console.error('Delete failed with error:', err);
+      const errorMessage = err instanceof Error ? err.message : `Failed to delete ${deleteTarget.type}`;
+      console.error('Error message to display:', errorMessage);
+      setError(errorMessage);
     } finally {
       setDeleteLoading(false);
     }
