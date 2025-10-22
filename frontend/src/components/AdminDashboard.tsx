@@ -84,12 +84,15 @@ const AdminDashboard = () => {
   const handleCreateDevice = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      console.log('Creating device with data:', newDevice);
       const createdDeviceData = await apiClient.createDevice(newDevice);
+      console.log('Device created successfully:', createdDeviceData);
       setCreatedDevice(createdDeviceData);
-      setPiConfigDialogOpen(true);
+      console.log('Set createdDevice state - useEffect will open dialog');
       setNewDevice({ name: '', device_id: '', course_id: 0, location: '' });
       loadData();
     } catch (err) {
+      console.error('Error creating device:', err);
       setError('Failed to create device');
     }
   };
@@ -172,19 +175,27 @@ const AdminDashboard = () => {
     if (!deleteTarget) return;
     
     setDeleteLoading(true);
+    setError('');
     try {
+      console.log(`Attempting to delete ${deleteTarget.type} with ID:`, deleteTarget.id);
       if (deleteTarget.type === 'course') {
-        await apiClient.deleteCourse(deleteTarget.id);
+        const result = await apiClient.deleteCourse(deleteTarget.id);
+        console.log('Course delete result:', result);
       } else {
-        await apiClient.deleteDevice(deleteTarget.id);
+        const result = await apiClient.deleteDevice(deleteTarget.id);
+        console.log('Device delete result:', result);
       }
       
+      console.log('Delete successful, closing dialog and reloading data');
       setDeleteDialogOpen(false);
       setDeleteTarget(null);
-      loadData();
+      await loadData();
       setError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to delete ${deleteTarget.type}`);
+      console.error('Delete failed with error:', err);
+      const errorMessage = err instanceof Error ? err.message : `Failed to delete ${deleteTarget.type}`;
+      console.error('Error message to display:', errorMessage);
+      setError(errorMessage);
     } finally {
       setDeleteLoading(false);
     }
@@ -198,6 +209,13 @@ const AdminDashboard = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (createdDevice) {
+      console.log('createdDevice changed, opening dialog:', createdDevice);
+      setPiConfigDialogOpen(true);
+    }
+  }, [createdDevice]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -641,7 +659,12 @@ const AdminDashboard = () => {
 
       <PiImagerConfigDialog
         open={piConfigDialogOpen}
-        onOpenChange={setPiConfigDialogOpen}
+        onOpenChange={(open) => {
+          setPiConfigDialogOpen(open);
+          if (!open) {
+            setCreatedDevice(null);
+          }
+        }}
         device={createdDevice}
       />
 
@@ -656,7 +679,12 @@ const AdminDashboard = () => {
                   This will also delete all associated campaigns, notices, and analytics data.
                 </span>
               )}
-              This action cannot be undone.
+              {deleteLoading && (
+                <span className="block mt-2 text-blue-600">
+                  Please wait... This may take up to a minute if the server is waking up.
+                </span>
+              )}
+              {!deleteLoading && <span className="block mt-2">This action cannot be undone.</span>}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

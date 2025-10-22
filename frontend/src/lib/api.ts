@@ -87,7 +87,7 @@ class ApiClient {
     localStorage.removeItem('token');
   }
 
-  private async request(endpoint: string, options: RequestInit = {}, retries = 2) {
+  private async request(endpoint: string, options: RequestInit = {}, retries = 2, timeout = 30000) {
     const url = `${API_BASE_URL}${endpoint}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -103,7 +103,7 @@ class ApiClient {
         const response = await fetch(url, {
           ...options,
           headers,
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(timeout),
         });
 
         if (!response.ok) {
@@ -111,9 +111,19 @@ class ApiClient {
           throw new Error(error.detail || `HTTP ${response.status}`);
         }
 
-        return response.json();
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          return response.json();
+        } else if (response.status === 204 || response.headers.get('content-length') === '0') {
+          return {};
+        } else {
+          return response.json().catch(() => ({}));
+        }
       } catch (error: any) {
         if (attempt === retries || (error.name !== 'AbortError' && !error.message.includes('fetch'))) {
+          if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+            throw new Error('Request timed out. The server may be sleeping, please try again.');
+          }
           throw error;
         }
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
@@ -445,15 +455,31 @@ class ApiClient {
   }
 
   async deleteCourse(courseId: number): Promise<{message: string}> {
-    return this.request(`/admin/courses/${courseId}`, {
-      method: 'DELETE',
-    });
+    console.log('Deleting course:', courseId);
+    try {
+      const result = await this.request(`/admin/courses/${courseId}`, {
+        method: 'DELETE',
+      }, 2, 60000);
+      console.log('Course deleted successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('Error deleting course:', error);
+      throw error;
+    }
   }
 
   async deleteDevice(deviceId: number): Promise<{message: string}> {
-    return this.request(`/admin/devices/${deviceId}`, {
-      method: 'DELETE',
-    });
+    console.log('Deleting device:', deviceId);
+    try {
+      const result = await this.request(`/admin/devices/${deviceId}`, {
+        method: 'DELETE',
+      }, 2, 60000);
+      console.log('Device deleted successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('Error deleting device:', error);
+      throw error;
+    }
   }
 }
 

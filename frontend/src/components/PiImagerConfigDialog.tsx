@@ -18,7 +18,12 @@ export const PiImagerConfigDialog: React.FC<PiImagerConfigDialogProps> = ({
 }) => {
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
 
-  if (!device) return null;
+  if (!device) {
+    console.log('PiImagerConfigDialog: device is null, not rendering');
+    return null;
+  }
+  
+  console.log('PiImagerConfigDialog: rendering with device:', device);
 
   const copyToClipboard = async (text: string, section: string) => {
     try {
