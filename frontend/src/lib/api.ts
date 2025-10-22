@@ -111,7 +111,14 @@ class ApiClient {
           throw new Error(error.detail || `HTTP ${response.status}`);
         }
 
-        return response.json();
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          return response.json();
+        } else if (response.status === 204 || response.headers.get('content-length') === '0') {
+          return {};
+        } else {
+          return response.json().catch(() => ({}));
+        }
       } catch (error: any) {
         if (attempt === retries || (error.name !== 'AbortError' && !error.message.includes('fetch'))) {
           throw error;
@@ -445,15 +452,31 @@ class ApiClient {
   }
 
   async deleteCourse(courseId: number): Promise<{message: string}> {
-    return this.request(`/admin/courses/${courseId}`, {
-      method: 'DELETE',
-    });
+    console.log('Deleting course:', courseId);
+    try {
+      const result = await this.request(`/admin/courses/${courseId}`, {
+        method: 'DELETE',
+      });
+      console.log('Course deleted successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('Error deleting course:', error);
+      throw error;
+    }
   }
 
   async deleteDevice(deviceId: number): Promise<{message: string}> {
-    return this.request(`/admin/devices/${deviceId}`, {
-      method: 'DELETE',
-    });
+    console.log('Deleting device:', deviceId);
+    try {
+      const result = await this.request(`/admin/devices/${deviceId}`, {
+        method: 'DELETE',
+      });
+      console.log('Device deleted successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('Error deleting device:', error);
+      throw error;
+    }
   }
 }
 
