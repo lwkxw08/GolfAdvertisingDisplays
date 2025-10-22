@@ -679,7 +679,12 @@ const AdminDashboard = () => {
                   This will also delete all associated campaigns, notices, and analytics data.
                 </span>
               )}
-              This action cannot be undone.
+              {deleteLoading && (
+                <span className="block mt-2 text-blue-600">
+                  Please wait... This may take up to a minute if the server is waking up.
+                </span>
+              )}
+              {!deleteLoading && <span className="block mt-2">This action cannot be undone.</span>}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -87,7 +87,7 @@ class ApiClient {
     localStorage.removeItem('token');
   }
 
-  private async request(endpoint: string, options: RequestInit = {}, retries = 2) {
+  private async request(endpoint: string, options: RequestInit = {}, retries = 2, timeout = 30000) {
     const url = `${API_BASE_URL}${endpoint}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -103,7 +103,7 @@ class ApiClient {
         const response = await fetch(url, {
           ...options,
           headers,
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(timeout),
         });
 
         if (!response.ok) {
@@ -121,6 +121,9 @@ class ApiClient {
         }
       } catch (error: any) {
         if (attempt === retries || (error.name !== 'AbortError' && !error.message.includes('fetch'))) {
+          if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+            throw new Error('Request timed out. The server may be sleeping, please try again.');
+          }
           throw error;
         }
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
@@ -456,7 +459,7 @@ class ApiClient {
     try {
       const result = await this.request(`/admin/courses/${courseId}`, {
         method: 'DELETE',
-      });
+      }, 2, 60000);
       console.log('Course deleted successfully:', result);
       return result;
     } catch (error) {
@@ -470,7 +473,7 @@ class ApiClient {
     try {
       const result = await this.request(`/admin/devices/${deviceId}`, {
         method: 'DELETE',
-      });
+      }, 2, 60000);
       console.log('Device deleted successfully:', result);
       return result;
     } catch (error) {
