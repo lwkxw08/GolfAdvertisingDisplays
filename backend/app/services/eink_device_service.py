@@ -280,9 +280,11 @@ class EInkDeviceService:
                 last_refresh_duration=status_data.get('last_refresh_duration', 19.0)
             )
             db.add(analytics)
+            db.flush()
             logger.debug(f"Device analytics recorded for {device_id}")
         except Exception as e:
             logger.warning(f"Failed to record analytics for {device_id}: {e}. Device will still show as online.")
+            db.rollback()
         
         response = {
             'status': 'success',
