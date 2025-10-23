@@ -73,7 +73,9 @@ export const PiImagerConfigDialog: React.FC<PiImagerConfigDialogProps> = ({
     }
   };
 
-  const setupCommands = `# Device Client Setup Commands
+  const automatedSetupCommand = `curl -sSL https://raw.githubusercontent.com/lwkxw08/GolfAdvertisingDisplays/devin/1727000056-supabase-migration/setup-scripts/install-device.sh | bash -s -- ${device.device_id}`;
+
+  const manualSetupCommands = `# Manual Device Client Setup Commands (if automated script fails)
 cd /home/pi
 mkdir eink-device && cd eink-device
 wget https://raw.githubusercontent.com/lwkxw08/GolfAdvertisingDisplays/devin/1727000056-supabase-migration/device-client/eink_device_client.py
@@ -208,33 +210,76 @@ sudo systemctl start eink-device.service`;
             </div>
           </div>
 
-          {/* Device Setup Commands */}
+          {/* Automated Setup Command */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-gray-600" />
-              <span className="font-medium">Post-Installation Setup Commands</span>
+              <Terminal className="w-4 h-4 text-green-600" />
+              <span className="font-medium">Automated Setup (Recommended)</span>
             </div>
-            <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm">
-              <pre className="whitespace-pre-wrap">{setupCommands}</pre>
+            <div className="bg-green-50 border-2 border-green-200 p-4 rounded-lg">
+              <div className="space-y-3">
+                <p className="text-sm text-green-800 font-medium">
+                  ✨ One-command installation! SSH into your Pi and run:
+                </p>
+                <div className="bg-gray-900 text-green-400 p-3 rounded font-mono text-sm">
+                  <pre className="whitespace-pre-wrap">{automatedSetupCommand}</pre>
+                </div>
+                <Button
+                  variant="default"
+                  onClick={() => copyToClipboard(automatedSetupCommand, 'automated')}
+                  className="w-full bg-green-600 hover:bg-green-700"
+                >
+                  {copiedSection === 'automated' ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Command Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy Automated Setup Command
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-green-700">
+                  This script will automatically install all dependencies, configure the device, and start the service.
+                </p>
+              </div>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => copyToClipboard(setupCommands, 'commands')}
-              className="w-full"
-            >
-              {copiedSection === 'commands' ? (
-                <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Commands Copied!
-                </>
-              ) : (
-                <>
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copy All Setup Commands
-                </>
-              )}
-            </Button>
           </div>
+
+          {/* Manual Setup Commands (Collapsible) */}
+          <details className="space-y-4">
+            <summary className="cursor-pointer flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
+              <Terminal className="w-4 h-4" />
+              <span className="font-medium">Manual Setup (Advanced)</span>
+            </summary>
+            <div className="mt-4 space-y-3">
+              <p className="text-sm text-gray-600">
+                If the automated script fails, you can run these commands manually:
+              </p>
+              <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm max-h-96 overflow-y-auto">
+                <pre className="whitespace-pre-wrap">{manualSetupCommands}</pre>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => copyToClipboard(manualSetupCommands, 'manual')}
+                className="w-full"
+              >
+                {copiedSection === 'manual' ? (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Manual Commands Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copy Manual Setup Commands
+                  </>
+                )}
+              </Button>
+            </div>
+          </details>
         </div>
         
         <DialogFooter>
