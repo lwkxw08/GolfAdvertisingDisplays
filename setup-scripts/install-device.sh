@@ -178,6 +178,11 @@ EOF
 create_systemd_service() {
     print_info "Creating systemd service..."
     
+    print_info "Creating log file..."
+    sudo touch /var/log/eink_device.log
+    sudo chown pi:pi /var/log/eink_device.log
+    sudo chmod 644 /var/log/eink_device.log
+    
     sudo tee /etc/systemd/system/eink-device.service > /dev/null <<EOF
 [Unit]
 Description=E-ink Device Client for Golf CMS
