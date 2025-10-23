@@ -246,9 +246,11 @@ class EInkDeviceService:
                 signal_strength=-65 if connectivity_type == 'lte' else -45
             )
             db.add(analytics)
+            db.flush()
             
         except Exception as e:
-            logger.error(f"Failed to record connectivity analytics: {e}")
+            logger.warning(f"Failed to record connectivity analytics: {e}")
+            db.rollback()
     
     def process_device_status_update(self, db: Session, device_id: str, 
                                    status_data: Dict[str, Any]) -> Dict[str, Any]:
