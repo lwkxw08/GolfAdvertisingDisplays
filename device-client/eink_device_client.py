@@ -18,7 +18,7 @@ import psutil
 import threading
 import queue
 
-sys.path.append('/home/pi/e-Paper/RaspberryPi/python/lib')
+sys.path.append('/home/pi/e-Paper/RaspberryPi_JetsonNano/python/lib')
 
 try:
     import epd13in3E
