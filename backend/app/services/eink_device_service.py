@@ -265,20 +265,24 @@ class EInkDeviceService:
         signal_strength = status_data.get('signal_strength', -50)
         display_status = status_data.get('display_status', 'ok')
         
-        analytics = DeviceAnalytics(
-            device_id=device.id,
-            sync_timestamp=datetime.utcnow(),
-            uptime_hours=status_data.get('uptime_hours', 1.0),
-            impressions_count=status_data.get('impressions_count', 1),
-            notices_displayed=status_data.get('notices_displayed', 0),
-            campaigns_displayed=status_data.get('campaigns_displayed', 1),
-            connectivity_type=connectivity_type,
-            power_level=battery_level,
-            signal_strength=signal_strength,
-            error_count=status_data.get('error_count', 0),
-            last_refresh_duration=status_data.get('last_refresh_duration', 19.0)
-        )
-        db.add(analytics)
+        try:
+            analytics = DeviceAnalytics(
+                device_id=device.id,
+                sync_timestamp=datetime.utcnow(),
+                uptime_hours=status_data.get('uptime_hours', 1.0),
+                impressions_count=status_data.get('impressions_count', 1),
+                notices_displayed=status_data.get('notices_displayed', 0),
+                campaigns_displayed=status_data.get('campaigns_displayed', 1),
+                connectivity_type=connectivity_type,
+                power_level=battery_level,
+                signal_strength=signal_strength,
+                error_count=status_data.get('error_count', 0),
+                last_refresh_duration=status_data.get('last_refresh_duration', 19.0)
+            )
+            db.add(analytics)
+            logger.debug(f"Device analytics recorded for {device_id}")
+        except Exception as e:
+            logger.warning(f"Failed to record analytics for {device_id}: {e}. Device will still show as online.")
         
         response = {
             'status': 'success',
