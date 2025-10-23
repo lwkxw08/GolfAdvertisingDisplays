@@ -42,6 +42,7 @@ class EInkDeviceService:
         
         device.last_sync = datetime.utcnow()
         device.is_online = True
+        db.commit()
         
         self._record_connectivity_analytics(db, device, connectivity_type)
         
@@ -50,7 +51,6 @@ class EInkDeviceService:
         playlist['eink_config'] = self._get_eink_config(connectivity_type)
         playlist['power_management'] = self._get_power_config(device, connectivity_type)
         
-        db.commit()
         return playlist
     
     def _get_optimized_content(self, db: Session, device: Device, 
@@ -261,6 +261,7 @@ class EInkDeviceService:
         
         device.last_sync = datetime.utcnow()
         device.is_online = True
+        db.commit()
         
         battery_level = status_data.get('battery_level', 85)
         connectivity_type = status_data.get('connectivity_type', 'wifi')
@@ -282,7 +283,7 @@ class EInkDeviceService:
                 last_refresh_duration=status_data.get('last_refresh_duration', 19.0)
             )
             db.add(analytics)
-            db.flush()
+            db.commit()
             logger.debug(f"Device analytics recorded for {device_id}")
         except Exception as e:
             logger.warning(f"Failed to record analytics for {device_id}: {e}. Device will still show as online.")
@@ -305,7 +306,6 @@ class EInkDeviceService:
             response['config_updates']['diagnostic_mode'] = True
             response['next_sync_interval'] = self.refresh_intervals['fast']
         
-        db.commit()
         return response
     
     def _calculate_next_sync_interval(self, battery_level: float, 
