@@ -90,9 +90,27 @@ install_eink_library() {
     fi
     
     cd /home/pi
-    git clone https://github.com/waveshare/e-Paper.git
-    cd e-Paper/RaspberryPi/python
-    sudo python3 setup.py install
+    
+    print_info "Cloning Waveshare e-Paper repository..."
+    if ! git clone https://github.com/waveshare/e-Paper.git; then
+        print_error "Failed to clone Waveshare repository"
+        exit 1
+    fi
+    
+    if [ ! -d "e-Paper/RaspberryPi_JetsonNano/python" ]; then
+        print_error "Waveshare repository structure not as expected"
+        print_info "Checking available directories..."
+        ls -la e-Paper/
+        exit 1
+    fi
+    
+    cd e-Paper/RaspberryPi_JetsonNano/python
+    
+    print_info "Installing Waveshare library..."
+    if ! sudo python3 setup.py install; then
+        print_error "Failed to install Waveshare library"
+        exit 1
+    fi
     
     print_success "Waveshare E-ink library installed"
 }
