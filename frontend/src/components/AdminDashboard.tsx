@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Plus, Building, Monitor, Megaphone, BarChart3, LogOut, Bell, Settings, Shield, Trash2 } from 'lucide-react';
+import { Plus, Building, Monitor, Megaphone, BarChart3, LogOut, Bell, Settings, Shield, Trash2, Info } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { ImagePreviewDialog } from './ImagePreviewDialog';
 import { PiImagerConfigDialog } from './PiImagerConfigDialog';
@@ -43,6 +43,7 @@ const AdminDashboard = () => {
 
   const [piConfigDialogOpen, setPiConfigDialogOpen] = useState(false);
   const [createdDevice, setCreatedDevice] = useState<Device | null>(null);
+  const [selectedDeviceForSetup, setSelectedDeviceForSetup] = useState<Device | null>(null);
 
   const auditLogs = [
     { action: 'Course Created', user: 'admin@golfcms.com', timestamp: '2024-01-15 10:30:00' },
@@ -461,7 +462,15 @@ const AdminDashboard = () => {
                           {campaigns.filter(c => c.device_id === device.id).length}/5
                         </span>
                       </div>
-                      <div className="flex justify-end pt-2">
+                      <div className="flex justify-end gap-2 pt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedDeviceForSetup(device)}
+                        >
+                          <Info className="w-4 h-4 mr-2" />
+                          Setup Info
+                        </Button>
                         <Button
                           variant="destructive"
                           size="sm"
@@ -666,6 +675,16 @@ const AdminDashboard = () => {
           }
         }}
         device={createdDevice}
+      />
+
+      <PiImagerConfigDialog
+        open={selectedDeviceForSetup !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedDeviceForSetup(null);
+          }
+        }}
+        device={selectedDeviceForSetup}
       />
 
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
