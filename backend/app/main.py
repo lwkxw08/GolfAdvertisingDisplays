@@ -81,6 +81,19 @@ app.add_middleware(RateLimitMiddleware, redis_url=os.getenv("REDIS_URL"))
 from .middleware.audit_logging import AuditLoggingMiddleware
 app.add_middleware(AuditLoggingMiddleware)
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
