@@ -35,6 +35,7 @@ export interface Device {
   hardware_version?: string;
   remote_update_enabled?: boolean;
   diagnostic_enabled?: boolean;
+  orientation?: 'portrait' | 'landscape';
 }
 
 export interface SponsorCampaign {
