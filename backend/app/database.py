@@ -117,6 +117,9 @@ class SponsorCampaign(Base):
     creative_path = Column(String, nullable=False)
     start_date = Column(DateTime(timezone=True), nullable=False)
     end_date = Column(DateTime(timezone=True), nullable=False)
+    start_time = Column(String, nullable=True)  # Format: "HH:MM" (e.g., "09:00")
+    end_time = Column(String, nullable=True)    # Format: "HH:MM" (e.g., "17:00")
+    days_of_week = Column(String, nullable=True)  # JSON array: ["monday", "tuesday", ...]
     rotation_interval = Column(Integer, nullable=False)
     rotation_unit = Column(Enum(CampaignInterval), nullable=False)
     priority = Column(Integer, default=1)
@@ -125,6 +128,7 @@ class SponsorCampaign(Base):
     performance_metrics = Column(Text, nullable=True)  # JSON string
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     device = relationship("Device", back_populates="campaigns")
     schedule = relationship("AdvancedSchedule")

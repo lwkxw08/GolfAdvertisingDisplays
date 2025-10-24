@@ -57,6 +57,8 @@ class EInkDeviceService:
                              connectivity_type: str) -> Dict[str, Any]:
         """Get content optimized for connectivity type and E-ink display"""
         now = datetime.utcnow()
+        current_time = now.strftime("%H:%M")
+        current_day = now.strftime("%A").lower()
         
         from ..database import Notice
         active_notices = db.query(Notice).filter(
@@ -67,12 +69,17 @@ class EInkDeviceService:
         ).order_by(Notice.created_at.desc()).all()
         
         from ..database import SponsorCampaign
-        active_campaigns = db.query(SponsorCampaign).filter(
+        all_campaigns = db.query(SponsorCampaign).filter(
             SponsorCampaign.device_id == device.id,
             SponsorCampaign.start_date <= now,
             SponsorCampaign.end_date > now,
             SponsorCampaign.is_active == True
         ).order_by(SponsorCampaign.priority.desc()).all()
+        
+        active_campaigns = []
+        for campaign in all_campaigns:
+            if self._is_campaign_active_now(campaign, current_time, current_day):
+                active_campaigns.append(campaign)
         
         playlist_items = []
         
@@ -115,6 +122,26 @@ class EInkDeviceService:
             'connectivity_type': connectivity_type,
             'total_items': len(playlist_items)
         }
+    
+    def _is_campaign_active_now(self, campaign, current_time: str, current_day: str) -> bool:
+        """Check if campaign is active based on time slots and days of week"""
+        if not campaign.start_time and not campaign.end_time and not campaign.days_of_week:
+            return True
+        
+        if campaign.days_of_week:
+            try:
+                days_list = json.loads(campaign.days_of_week) if isinstance(campaign.days_of_week, str) else campaign.days_of_week
+                if current_day not in [day.lower() for day in days_list]:
+                    return False
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        if campaign.start_time and campaign.end_time:
+            if campaign.start_time <= current_time <= campaign.end_time:
+                return True
+            return False
+        
+        return True
     
     def _get_eink_config(self, connectivity_type: str) -> Dict[str, Any]:
         """Get E-ink specific configuration based on connectivity"""

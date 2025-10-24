@@ -23,7 +23,7 @@ from .auth import (
 from .schemas import (
     Token, LoginRequest, UserResponse, UserCreate, CourseResponse, CourseCreate,
     DeviceResponse, DeviceCreate, SponsorCampaignResponse, SponsorCampaignCreate,
-    NoticeResponse, NoticeCreate, PlaylistItem, DevicePlaylist,
+    SponsorCampaignUpdate, NoticeResponse, NoticeCreate, PlaylistItem, DevicePlaylist,
     CourseRegistrationRequest, SubscriptionResponse, DeviceAnalyticsResponse,
     AnalyticsSummary, CourseAnalytics, EmailTemplateResponse, RevenueAnalytics,
     TenantUsageAnalytics, SystemPerformanceMetrics, OnboardingProgress, BackupResult,
@@ -313,6 +313,134 @@ async def list_campaigns(
     if device_id:
         query = query.filter(SponsorCampaign.device_id == device_id)
     return query.all()
+
+@app.put("/admin/campaigns/{campaign_id}", response_model=SponsorCampaignResponse)
+async def update_campaign(
+    campaign_id: int,
+    campaign_data: SponsorCampaignUpdate,
+    creative: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    db_campaign = db.query(SponsorCampaign).filter(SponsorCampaign.id == campaign_id).first()
+    if not db_campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    update_data = campaign_data.dict(exclude_unset=True)
+    
+    if 'days_of_week' in update_data and update_data['days_of_week'] is not None:
+        import json
+        update_data['days_of_week'] = json.dumps(update_data['days_of_week'])
+    
+    if creative:
+        file_content = await creative.read()
+        file_url = storage_service.upload_file(
+            file_content=file_content,
+            filename=creative.filename,
+            content_type=creative.content_type
+        )
+        if file_url:
+            update_data['creative_path'] = file_url
+    
+    for key, value in update_data.items():
+        setattr(db_campaign, key, value)
+    
+    db.commit()
+    db.refresh(db_campaign)
+    
+    return db_campaign
+
+@app.post("/admin/campaigns/bulk", response_model=List[SponsorCampaignResponse])
+async def bulk_create_campaigns(
+    campaigns_data: str = Form(...),
+    creatives: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """
+    Bulk create campaigns for multiple devices.
+    campaigns_data should be a JSON string containing an array of campaign objects.
+    Each campaign object should have device_id and other campaign fields.
+    creatives should be an array of files matching the order of campaigns.
+    """
+    import json
+    
+    try:
+        campaigns_list = json.loads(campaigns_data)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON in campaigns_data"
+        )
+    
+    if len(campaigns_list) != len(creatives):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Number of campaigns ({len(campaigns_list)}) must match number of creative files ({len(creatives)})"
+        )
+    
+    created_campaigns = []
+    
+    for idx, (campaign_data, creative) in enumerate(zip(campaigns_list, creatives)):
+        try:
+            device = db.query(Device).filter(Device.id == campaign_data.get('device_id')).first()
+            if not device:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Device not found for campaign {idx + 1}"
+                )
+            
+            active_campaigns = db.query(SponsorCampaign).filter(
+                SponsorCampaign.device_id == campaign_data['device_id'],
+                SponsorCampaign.is_active == True
+            ).count()
+            
+            if active_campaigns >= 5:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Device {campaign_data['device_id']} already has maximum 5 campaigns"
+                )
+            
+            file_content = await creative.read()
+            file_url = storage_service.upload_file(
+                file_content=file_content,
+                filename=creative.filename,
+                content_type=creative.content_type
+            )
+            
+            if not file_url:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to upload creative file for campaign {idx + 1}"
+                )
+            
+            if 'days_of_week' in campaign_data and campaign_data['days_of_week']:
+                campaign_data['days_of_week'] = json.dumps(campaign_data['days_of_week'])
+            
+            from datetime import datetime
+            if 'start_date' in campaign_data:
+                campaign_data['start_date'] = datetime.fromisoformat(campaign_data['start_date'].replace('Z', '+00:00'))
+            if 'end_date' in campaign_data:
+                campaign_data['end_date'] = datetime.fromisoformat(campaign_data['end_date'].replace('Z', '+00:00'))
+            
+            db_campaign = SponsorCampaign(
+                **campaign_data,
+                creative_path=file_url
+            )
+            db.add(db_campaign)
+            db.commit()
+            db.refresh(db_campaign)
+            
+            created_campaigns.append(db_campaign)
+            
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create campaign {idx + 1}: {str(e)}"
+            )
+    
+    return created_campaigns
 
 @app.post("/courses/{course_id}/notices", response_model=NoticeResponse)
 async def create_notice(

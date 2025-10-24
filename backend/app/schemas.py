@@ -80,6 +80,9 @@ class SponsorCampaignBase(BaseModel):
     device_id: int
     start_date: datetime
     end_date: datetime
+    start_time: Optional[str] = None  # Format: "HH:MM"
+    end_time: Optional[str] = None    # Format: "HH:MM"
+    days_of_week: Optional[List[str]] = None  # ["monday", "tuesday", ...]
     rotation_interval: int
     rotation_unit: CampaignInterval
     priority: int = 1
@@ -87,14 +90,30 @@ class SponsorCampaignBase(BaseModel):
 class SponsorCampaignCreate(SponsorCampaignBase):
     pass
 
+class SponsorCampaignUpdate(BaseModel):
+    sponsor_name: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    days_of_week: Optional[List[str]] = None
+    rotation_interval: Optional[int] = None
+    rotation_unit: Optional[CampaignInterval] = None
+    priority: Optional[int] = None
+    is_active: Optional[bool] = None
+
 class SponsorCampaignResponse(SponsorCampaignBase):
     id: int
     creative_path: str
     is_active: bool
     created_at: datetime
+    updated_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
+
+class BulkCampaignCreate(BaseModel):
+    campaigns: List[Dict[str, Any]]  # List of campaign data with device_ids
 
 class NoticeBase(BaseModel):
     title: str
