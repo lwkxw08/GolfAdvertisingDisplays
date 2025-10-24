@@ -783,7 +783,13 @@ async def generate_notice_eink_image(
             raise HTTPException(status_code=404, detail="Notice not found")
         
         from .auth import check_course_access
-        check_course_access(notice.course_id, current_user)
+        check_course_access(notice.course_id, current_user, db)
+        
+        # Get device orientation
+        device = db.query(Device).filter(Device.id == notice.device_id).first()
+        orientation = 'portrait'
+        if device and device.orientation:
+            orientation = device.orientation.value if hasattr(device.orientation, 'value') else str(device.orientation)
         
         notice_data = {
             'id': notice.id,
@@ -801,12 +807,13 @@ async def generate_notice_eink_image(
                     'text_align': style.text_align or 'center'
                 }
         
-        image_path = image_processing_service.create_notice_image(notice_data)
+        image_path = image_processing_service.create_notice_image(notice_data, orientation=orientation)
         
         return {
             'status': 'success',
             'image_path': image_path,
             'notice_id': notice_id,
+            'orientation': orientation,
             'message': 'E-ink notice image generated'
         }
         
