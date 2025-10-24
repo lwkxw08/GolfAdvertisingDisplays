@@ -532,6 +532,53 @@ class ApiClient {
       throw error;
     }
   }
+
+  async getAllNotices(courseId?: number, deviceId?: number): Promise<Notice[]> {
+    let url = '/admin/notices';
+    const params = new URLSearchParams();
+    if (courseId) params.append('course_id', courseId.toString());
+    if (deviceId) params.append('device_id', deviceId.toString());
+    if (params.toString()) url += `?${params.toString()}`;
+    return this.request(url);
+  }
+
+  async updateNotice(noticeId: number, noticeData: Partial<Notice>): Promise<Notice> {
+    return this.request(`/admin/notices/${noticeId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(noticeData),
+    });
+  }
+
+  async deleteNotice(noticeId: number): Promise<{message: string}> {
+    try {
+      const result = await this.request(`/admin/notices/${noticeId}`, {
+        method: 'DELETE',
+      }, 2, 60000);
+      return result;
+    } catch (error) {
+      console.error('Error deleting notice:', error);
+      throw error;
+    }
+  }
+
+  async previewNoticeEink(noticeData: {title: string, content: string, device_id: number}): Promise<{preview_url: string}> {
+    const response = await fetch(`${API_BASE_URL}/api/notices/preview-eink`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+      },
+      body: JSON.stringify(noticeData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
 }
 
 export const apiClient = new ApiClient();

@@ -795,6 +795,44 @@ async def generate_notice_eink_image(
         print(f"ERROR in generate_notice_eink_image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/notices/preview-eink")
+async def preview_notice_eink(
+    notice_data: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """Preview notice in E-ink format before publishing"""
+    try:
+        device_id = notice_data.get('device_id')
+        if not device_id:
+            raise HTTPException(status_code=400, detail="device_id is required")
+        
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if not device:
+            raise HTTPException(status_code=404, detail="Device not found")
+        
+        orientation = device.orientation.value if device.orientation else 'portrait'
+        
+        notice_content = {
+            'title': notice_data.get('title', ''),
+            'content': notice_data.get('content', ''),
+            'style': notice_data.get('style', {})
+        }
+        
+        preview_result = image_processing_service.preview_notice_eink(
+            notice_content,
+            orientation=orientation
+        )
+        
+        return {
+            'preview_url': preview_result.get('preview_url'),
+            'orientation': orientation,
+            'message': 'Notice preview generated successfully'
+        }
+        
+    except Exception as e:
+        print(f"ERROR in preview_notice_eink: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/eink/connectivity-options")
 async def get_connectivity_options():
     """Get available connectivity options for E-ink devices"""
