@@ -7,7 +7,7 @@ import { Textarea } from './ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
-import { Plus, Monitor, Bell, LogOut, Clock, Eye } from 'lucide-react';
+import { Plus, Monitor, Bell, LogOut, Clock, Eye, Edit, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 
 export const TenantDashboard: React.FC = () => {
@@ -48,6 +48,8 @@ export const TenantDashboard: React.FC = () => {
     style_id: null as number | null,
     default_duration_minutes: 60,
   });
+  const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
+  const [noticeDialogOpen, setNoticeDialogOpen] = useState(false);
 
   useEffect(() => {
     if (user?.course_id) {
@@ -173,6 +175,37 @@ export const TenantDashboard: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Failed to generate preview');
     } finally {
       setPreviewLoading(false);
+    }
+  };
+
+  const handleEditNotice = (notice: Notice) => {
+    setEditingNotice(notice);
+    setNoticeDialogOpen(true);
+  };
+
+  const handleDeleteNotice = async (noticeId: number) => {
+    if (!confirm('Are you sure you want to delete this notice?')) return;
+    
+    try {
+      await apiClient.deleteNotice(noticeId);
+      await loadData();
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete notice');
+    }
+  };
+
+  const handleSaveNotice = async (noticeData: Partial<Notice>) => {
+    try {
+      if (editingNotice) {
+        await apiClient.updateNotice(editingNotice.id, noticeData);
+      }
+      setNoticeDialogOpen(false);
+      setEditingNotice(null);
+      await loadData();
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save notice');
     }
   };
 
@@ -415,28 +448,49 @@ export const TenantDashboard: React.FC = () => {
                       .map((notice) => (
                         <div key={notice.id} className="border rounded-lg p-4">
                           <div className="flex items-start justify-between mb-2">
-                            <h4 className="font-medium">{notice.title}</h4>
-                            <Badge variant={isNoticeActive(notice) ? "default" : "secondary"}>
-                              {isNoticeActive(notice) ? "Active" : "Expired"}
-                            </Badge>
-                          </div>
-                          
-                          <p className="text-sm text-gray-600 mb-3">{notice.content}</p>
-                          
-                          <div className="flex items-center justify-between text-xs text-gray-500">
-                            <span>
-                              Device: {devices.find(d => d.id === notice.device_id)?.name}
-                            </span>
-                            {isNoticeActive(notice) && (
-                              <div className="flex items-center">
-                                <Clock className="w-3 h-3 mr-1" />
-                                {getTimeRemaining(notice)}
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <h4 className="font-medium">{notice.title}</h4>
+                                <Badge variant={isNoticeActive(notice) ? "default" : "secondary"}>
+                                  {isNoticeActive(notice) ? "Active" : "Expired"}
+                                </Badge>
                               </div>
-                            )}
-                          </div>
-                          
-                          <div className="mt-2 text-xs text-gray-400">
-                            Created: {new Date(notice.created_at).toLocaleString()}
+                              
+                              <p className="text-sm text-gray-600 mb-3">{notice.content}</p>
+                              
+                              <div className="flex items-center justify-between text-xs text-gray-500">
+                                <span>
+                                  Device: {devices.find(d => d.id === notice.device_id)?.name}
+                                </span>
+                                {isNoticeActive(notice) && (
+                                  <div className="flex items-center">
+                                    <Clock className="w-3 h-3 mr-1" />
+                                    {getTimeRemaining(notice)}
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <div className="mt-2 text-xs text-gray-400">
+                                Created: {new Date(notice.created_at).toLocaleString()}
+                              </div>
+                            </div>
+                            
+                            <div className="flex gap-2 ml-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditNotice(notice)}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleDeleteNotice(notice.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))
@@ -520,6 +574,60 @@ export const TenantDashboard: React.FC = () => {
             </div>
           </div>
         )}
+
+        <Dialog open={noticeDialogOpen} onOpenChange={setNoticeDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Notice</DialogTitle>
+              <DialogDescription>Update notice details</DialogDescription>
+            </DialogHeader>
+            {editingNotice && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Title</label>
+                  <Input
+                    value={editingNotice.title}
+                    onChange={(e) => setEditingNotice({...editingNotice, title: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Content</label>
+                  <Textarea
+                    value={editingNotice.content}
+                    onChange={(e) => setEditingNotice({...editingNotice, content: e.target.value})}
+                    rows={4}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Start Time</label>
+                    <Input
+                      type="datetime-local"
+                      value={new Date(editingNotice.start_time).toISOString().slice(0, 16)}
+                      onChange={(e) => setEditingNotice({...editingNotice, start_time: new Date(e.target.value).toISOString()})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">End Time</label>
+                    <Input
+                      type="datetime-local"
+                      value={new Date(editingNotice.end_time).toISOString().slice(0, 16)}
+                      onChange={(e) => setEditingNotice({...editingNotice, end_time: new Date(e.target.value).toISOString()})}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setNoticeDialogOpen(false)} className="flex-1">
+                    Cancel
+                  </Button>
+                  <Button onClick={() => handleSaveNotice(editingNotice)} className="flex-1">
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={showPreview} onOpenChange={setShowPreview}>
           <DialogContent className="max-w-4xl">
