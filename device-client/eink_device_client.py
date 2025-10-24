@@ -356,7 +356,7 @@ class EInkDeviceClient:
     def __init__(self, config_file: str = "/etc/eink_device/config.json"):
         self.config = self._load_config(config_file)
         self.device_id = self.config.get('device_id', 'unknown')
-        self.api_base_url = self.config.get('api_base_url', 'https://app-mtdyxjgp.fly.dev')
+        self.api_base_url = self.config.get('api_base_url', 'https://golfadvertisingdisplays.onrender.com')
         self.sync_interval = self.config.get('sync_interval', 900)  # 15 minutes default
         
         self.connectivity = ConnectivityManager()
@@ -374,7 +374,7 @@ class EInkDeviceClient:
         """Load device configuration"""
         default_config = {
             'device_id': 'eink_device_001',
-            'api_base_url': 'https://app-mtdyxjgp.fly.dev',
+            'api_base_url': 'https://golfadvertisingdisplays.onrender.com',
             'sync_interval': 900,
             'max_retries': 3,
             'timeout': 30
