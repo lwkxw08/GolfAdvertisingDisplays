@@ -194,11 +194,13 @@ class ImageProcessingService:
             
             optimized_img = self._optimize_for_eink(img)
             
-            output_path = f"/tmp/notice_{notice_data.get('id', 'temp')}_{int(datetime.now().timestamp())}_e6.png"
+            os.makedirs("uploads/previews", exist_ok=True)
+            filename = f"notice_{notice_data.get('id', 'temp')}_{int(datetime.now().timestamp())}_e6.png"
+            output_path = f"uploads/previews/{filename}"
             optimized_img.save(output_path, 'PNG', optimize=True)
             
             logger.info(f"Created notice image: {output_path}")
-            return output_path
+            return f"/uploads/previews/{filename}"
             
         except Exception as e:
             logger.error(f"Failed to create notice image: {e}")

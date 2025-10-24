@@ -20,7 +20,7 @@ export const TenantDashboard: React.FC = () => {
   const [newNotice, setNewNotice] = useState({
     title: '',
     content: '',
-    device_id: 0,
+    device_ids: [] as number[],
     start_time: (() => {
       const now = new Date();
       const year = now.getFullYear();
@@ -87,15 +87,28 @@ export const TenantDashboard: React.FC = () => {
     if (!user?.course_id) return;
 
     try {
-      if (showAdvanced) {
-        await apiClient.createEnhancedNotice(user.course_id, newNotice);
-      } else {
-        await apiClient.createNotice(user.course_id, newNotice);
+      if (newNotice.device_ids.length === 0) {
+        setError('Please select at least one device');
+        return;
       }
+
+      for (const deviceId of newNotice.device_ids) {
+        const noticeData = {
+          ...newNotice,
+          device_id: deviceId
+        };
+        
+        if (showAdvanced) {
+          await apiClient.createEnhancedNotice(user.course_id, noticeData);
+        } else {
+          await apiClient.createNotice(user.course_id, noticeData);
+        }
+      }
+      
       setNewNotice({
         title: '',
         content: '',
-        device_id: 0,
+        device_ids: [],
         start_time: (() => {
           const now = new Date();
           const year = now.getFullYear();
@@ -109,6 +122,7 @@ export const TenantDashboard: React.FC = () => {
         style_id: null,
         template_id: null,
       });
+      setError('');
       loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create notice');
@@ -160,8 +174,8 @@ export const TenantDashboard: React.FC = () => {
   };
 
   const handlePreviewNotice = async () => {
-    if (!newNotice.title || !newNotice.content || !newNotice.device_id) {
-      setError('Please fill in title, content, and select a device before previewing');
+    if (!newNotice.title || !newNotice.content || newNotice.device_ids.length === 0) {
+      setError('Please fill in title, content, and select at least one device before previewing');
       return;
     }
 
@@ -171,9 +185,13 @@ export const TenantDashboard: React.FC = () => {
       const result = await apiClient.previewNoticeEink({
         title: newNotice.title,
         content: newNotice.content,
-        device_id: newNotice.device_id,
+        device_id: newNotice.device_ids[0],
       });
-      setPreviewUrl(result.preview_url);
+      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const fullPreviewUrl = result.preview_url.startsWith('http') 
+        ? result.preview_url 
+        : `${apiBaseUrl}${result.preview_url}`;
+      setPreviewUrl(fullPreviewUrl);
       setShowPreview(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate preview');
@@ -351,19 +369,40 @@ export const TenantDashboard: React.FC = () => {
                     rows={3}
                   />
                   
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={newNotice.device_id}
-                    onChange={(e) => setNewNotice({ ...newNotice, device_id: parseInt(e.target.value) })}
-                    required
-                  >
-                    <option value={0}>Select Device</option>
-                    {devices.map((device) => (
-                      <option key={device.id} value={device.id}>
-                        {device.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="border border-gray-300 rounded-md p-3">
+                    <label className="block text-sm font-medium mb-2">Select Devices (one or more)</label>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {devices.length === 0 ? (
+                        <p className="text-sm text-gray-500">No devices available</p>
+                      ) : (
+                        devices.map((device) => (
+                          <label key={device.id} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                            <input
+                              type="checkbox"
+                              checked={newNotice.device_ids.includes(device.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setNewNotice({ ...newNotice, device_ids: [...newNotice.device_ids, device.id] });
+                                } else {
+                                  setNewNotice({ ...newNotice, device_ids: newNotice.device_ids.filter(id => id !== device.id) });
+                                }
+                              }}
+                              className="w-4 h-4"
+                            />
+                            <span className="text-sm">{device.name}</span>
+                            <Badge variant={device.is_online ? "default" : "secondary"} className="ml-auto">
+                              {device.is_online ? "Online" : "Offline"}
+                            </Badge>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                    {newNotice.device_ids.length > 0 && (
+                      <p className="text-xs text-gray-600 mt-2">
+                        {newNotice.device_ids.length} device{newNotice.device_ids.length > 1 ? 's' : ''} selected
+                      </p>
+                    )}
+                  </div>
                   
                   <Input
                     type="datetime-local"
@@ -411,7 +450,7 @@ export const TenantDashboard: React.FC = () => {
                       type="button"
                       variant="outline"
                       onClick={handlePreviewNotice}
-                      disabled={previewLoading || !newNotice.title || !newNotice.content || !newNotice.device_id}
+                      disabled={previewLoading || !newNotice.title || !newNotice.content || newNotice.device_ids.length === 0}
                     >
                       <Eye className="w-4 h-4 mr-2" />
                       {previewLoading ? 'Loading...' : 'Preview'}
