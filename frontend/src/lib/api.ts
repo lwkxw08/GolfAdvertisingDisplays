@@ -498,6 +498,26 @@ class ApiClient {
     });
   }
 
+  async updateNoticeTemplate(courseId: number, templateId: number, templateData: any): Promise<any> {
+    return this.request(`/courses/${courseId}/notice-templates/${templateId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(templateData),
+    });
+  }
+
+  async deleteNoticeTemplate(courseId: number, templateId: number): Promise<{message: string}> {
+    try {
+      const result = await this.request(`/courses/${courseId}/notice-templates/${templateId}`, {
+        method: 'DELETE',
+      }, 2, 60000);
+      return result;
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      throw error;
+    }
+  }
+
   async createEnhancedNotice(courseId: number, noticeData: any): Promise<any> {
     return this.request(`/courses/${courseId}/notices/enhanced`, {
       method: 'POST',

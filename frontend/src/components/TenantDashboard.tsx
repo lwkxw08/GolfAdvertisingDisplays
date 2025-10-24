@@ -51,6 +51,8 @@ export const TenantDashboard: React.FC = () => {
   });
   const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
   const [noticeDialogOpen, setNoticeDialogOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<any | null>(null);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
 
   useEffect(() => {
     if (user?.course_id) {
@@ -208,6 +210,40 @@ export const TenantDashboard: React.FC = () => {
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save notice');
+    }
+  };
+
+  const handleEditTemplate = (template: any) => {
+    setEditingTemplate(template);
+    setTemplateDialogOpen(true);
+  };
+
+  const handleDeleteTemplate = async (templateId: number) => {
+    if (!confirm('Are you sure you want to delete this template?')) return;
+    if (!user?.course_id) return;
+    
+    try {
+      await apiClient.deleteNoticeTemplate(user.course_id, templateId);
+      await loadData();
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete template');
+    }
+  };
+
+  const handleSaveTemplate = async (templateData: any) => {
+    if (!user?.course_id) return;
+    
+    try {
+      if (editingTemplate) {
+        await apiClient.updateNoticeTemplate(user.course_id, editingTemplate.id, templateData);
+      }
+      setTemplateDialogOpen(false);
+      setEditingTemplate(null);
+      await loadData();
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save template');
     }
   };
 
@@ -520,6 +556,60 @@ export const TenantDashboard: React.FC = () => {
               </CardContent>
             </Card>
           </div>
+
+          <div className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Notice Templates</CardTitle>
+                <CardDescription>Manage your reusable notice templates</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {noticeTemplates.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">No templates created yet</p>
+                  ) : (
+                    noticeTemplates.map((template) => (
+                      <div key={template.id} className="border rounded-lg p-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-medium mb-1">{template.name}</h4>
+                            <p className="text-sm text-gray-600 mb-2">{template.title}</p>
+                            <p className="text-xs text-gray-500 mb-2">{template.content}</p>
+                            <div className="flex gap-4 text-xs text-gray-500">
+                              <span>Duration: {template.default_duration_minutes} min</span>
+                              {template.recurrence_pattern && (
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {template.recurrence_pattern.type === 'daily' ? 'Daily' : 'Weekly'}
+                                  {template.recurrence_pattern.time && ` at ${template.recurrence_pattern.time}`}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-2 ml-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditTemplate(template)}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteTemplate(template.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {showTemplate && (
@@ -724,6 +814,159 @@ export const TenantDashboard: React.FC = () => {
                     Cancel
                   </Button>
                   <Button onClick={() => handleSaveNotice(editingNotice)} className="flex-1">
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Template</DialogTitle>
+              <DialogDescription>Update template details and recurrence settings</DialogDescription>
+            </DialogHeader>
+            {editingTemplate && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Template Name</label>
+                  <Input
+                    value={editingTemplate.name}
+                    onChange={(e) => setEditingTemplate({...editingTemplate, name: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Title</label>
+                  <Input
+                    value={editingTemplate.title}
+                    onChange={(e) => setEditingTemplate({...editingTemplate, title: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Content</label>
+                  <Textarea
+                    value={editingTemplate.content}
+                    onChange={(e) => setEditingTemplate({...editingTemplate, content: e.target.value})}
+                    rows={4}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Default Duration (minutes)</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="1440"
+                      value={editingTemplate.default_duration_minutes}
+                      onChange={(e) => setEditingTemplate({...editingTemplate, default_duration_minutes: parseInt(e.target.value)})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Font Style</label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      value={editingTemplate.style_id || ''}
+                      onChange={(e) => setEditingTemplate({...editingTemplate, style_id: e.target.value ? parseInt(e.target.value) : null})}
+                    >
+                      <option value="">Default Style</option>
+                      {noticeStyles.map((style) => (
+                        <option key={style.id} value={style.id}>
+                          {style.name} ({style.font_family})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <label className="block text-sm font-medium mb-2">Recurring Schedule (Optional)</label>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Recurrence Type</label>
+                      <select
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                        value={editingTemplate.recurrence_pattern?.type || ''}
+                        onChange={(e) => {
+                          if (e.target.value === '') {
+                            setEditingTemplate({...editingTemplate, recurrence_pattern: null});
+                          } else {
+                            setEditingTemplate({
+                              ...editingTemplate,
+                              recurrence_pattern: {
+                                type: e.target.value as 'daily' | 'weekly',
+                                days: e.target.value === 'weekly' ? [] : undefined,
+                                time: '09:00'
+                              }
+                            });
+                          }
+                        }}
+                      >
+                        <option value="">None (One-time template)</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                      </select>
+                    </div>
+
+                    {editingTemplate.recurrence_pattern?.type === 'weekly' && (
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Days of Week</label>
+                        <div className="flex gap-2 flex-wrap">
+                          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+                            <button
+                              key={day}
+                              type="button"
+                              className={`px-3 py-1 text-xs rounded border ${
+                                editingTemplate.recurrence_pattern?.days?.includes(index)
+                                  ? 'bg-blue-500 text-white border-blue-500'
+                                  : 'bg-white text-gray-700 border-gray-300'
+                              }`}
+                              onClick={() => {
+                                const currentDays = editingTemplate.recurrence_pattern?.days || [];
+                                const newDays = currentDays.includes(index)
+                                  ? currentDays.filter((d: number) => d !== index)
+                                  : [...currentDays, index].sort();
+                                setEditingTemplate({
+                                  ...editingTemplate,
+                                  recurrence_pattern: {
+                                    ...editingTemplate.recurrence_pattern!,
+                                    days: newDays
+                                  }
+                                });
+                              }}
+                            >
+                              {day}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {editingTemplate.recurrence_pattern && (
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Time</label>
+                        <Input
+                          type="time"
+                          value={editingTemplate.recurrence_pattern.time || '09:00'}
+                          onChange={(e) => setEditingTemplate({
+                            ...editingTemplate,
+                            recurrence_pattern: {
+                              ...editingTemplate.recurrence_pattern!,
+                              time: e.target.value
+                            }
+                          })}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setTemplateDialogOpen(false)} className="flex-1">
+                    Cancel
+                  </Button>
+                  <Button onClick={() => handleSaveTemplate(editingTemplate)} className="flex-1">
                     Save Changes
                   </Button>
                 </div>
