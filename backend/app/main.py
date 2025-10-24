@@ -33,7 +33,7 @@ from .database import (
     User, Course, Device, SponsorCampaign, Notice, UserRole, Subscription,
     DeviceAnalytics, EmailTemplate, SubscriptionStatus, PlanType, Region,
     AuditLog, CustomDashboard, DeviceDiagnostic, NoticeStyle, AdvancedSchedule,
-    SSOProvider, FontStyle, CampaignScheduleType, NoticeTemplate
+    SSOProvider, FontStyle, CampaignScheduleType, NoticeTemplate, CampaignInterval
 )
 from .services.s3_service import storage_service
 from .services.email_service import email_service
@@ -275,17 +275,26 @@ async def delete_device(
 
 @app.post("/admin/campaigns", response_model=SponsorCampaignResponse)
 async def create_campaign(
-    campaign_data: SponsorCampaignCreate,
+    sponsor_name: str = Form(...),
+    device_id: int = Form(...),
+    start_date: str = Form(...),
+    end_date: str = Form(...),
+    start_time: Optional[str] = Form(None),
+    end_time: Optional[str] = Form(None),
+    days_of_week: Optional[str] = Form(None),
+    rotation_interval: int = Form(...),
+    rotation_unit: str = Form(...),
+    priority: int = Form(1),
     creative: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
-    device = db.query(Device).filter(Device.id == campaign_data.device_id).first()
+    device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     
     active_campaigns = db.query(SponsorCampaign).filter(
-        SponsorCampaign.device_id == campaign_data.device_id,
+        SponsorCampaign.device_id == device_id,
         SponsorCampaign.is_active == True
     ).count()
     
@@ -308,8 +317,25 @@ async def create_campaign(
             detail="Failed to upload creative file"
         )
     
+    days_list = None
+    if days_of_week:
+        try:
+            import json
+            days_list = json.loads(days_of_week)
+        except:
+            days_list = [d.strip() for d in days_of_week.split(',') if d.strip()]
+    
     db_campaign = SponsorCampaign(
-        **campaign_data.dict(),
+        sponsor_name=sponsor_name,
+        device_id=device_id,
+        start_date=datetime.fromisoformat(start_date.replace('Z', '+00:00')),
+        end_date=datetime.fromisoformat(end_date.replace('Z', '+00:00')),
+        start_time=start_time,
+        end_time=end_time,
+        days_of_week=days_list,
+        rotation_interval=rotation_interval,
+        rotation_unit=CampaignInterval(rotation_unit),
+        priority=priority,
         creative_path=file_url
     )
     db.add(db_campaign)
