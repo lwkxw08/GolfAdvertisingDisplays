@@ -210,6 +210,56 @@ class ApiClient {
     return response.json();
   }
 
+  async updateCampaign(campaignId: number, campaignData: FormData): Promise<SponsorCampaign> {
+    const url = `${API_BASE_URL}/admin/campaigns/${campaignId}`;
+    const headers: Record<string, string> = {};
+
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers,
+      body: campaignData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async bulkCreateCampaigns(campaignsData: string, creatives: File[]): Promise<SponsorCampaign[]> {
+    const url = `${API_BASE_URL}/admin/campaigns/bulk`;
+    const headers: Record<string, string> = {};
+
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+
+    const formData = new FormData();
+    formData.append('campaigns_data', campaignsData);
+    creatives.forEach((file) => {
+      formData.append('creatives', file);
+    });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
   async getNotices(courseId: number): Promise<Notice[]> {
     return this.request(`/courses/${courseId}/notices`);
   }
