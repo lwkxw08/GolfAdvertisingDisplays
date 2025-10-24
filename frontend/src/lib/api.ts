@@ -563,7 +563,7 @@ class ApiClient {
   }
 
   async updateNotice(noticeId: number, noticeData: Partial<Notice>): Promise<Notice> {
-    return this.request(`/admin/notices/${noticeId}`, {
+    return this.request(`/api/notices/${noticeId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(noticeData),
@@ -572,7 +572,7 @@ class ApiClient {
 
   async deleteNotice(noticeId: number): Promise<{message: string}> {
     try {
-      const result = await this.request(`/admin/notices/${noticeId}`, {
+      const result = await this.request(`/api/notices/${noticeId}`, {
         method: 'DELETE',
       }, 2, 60000);
       return result;
