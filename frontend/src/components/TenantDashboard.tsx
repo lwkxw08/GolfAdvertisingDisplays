@@ -125,6 +125,7 @@ export const TenantDashboard: React.FC = () => {
         content: '',
         style_id: null,
         default_duration_minutes: 60,
+        recurrence_pattern: null,
       });
       setShowTemplate(false);
       loadData();
