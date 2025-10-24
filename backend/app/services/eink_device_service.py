@@ -422,5 +422,29 @@ class EInkDeviceService:
             recommendations.append("Device operating normally")
         
         return recommendations
+    
+    def update_offline_devices(self, db: Session, offline_threshold_minutes: int = 20) -> int:
+        """
+        Mark devices as offline if they haven't sent an update in the specified time.
+        Returns the number of devices marked as offline.
+        """
+        threshold_time = datetime.utcnow() - timedelta(minutes=offline_threshold_minutes)
+        
+        stale_devices = db.query(Device).filter(
+            Device.is_online == True,
+            Device.last_sync < threshold_time
+        ).all()
+        
+        count = 0
+        for device in stale_devices:
+            device.is_online = False
+            count += 1
+            logger.info(f"Marked device {device.device_id} as offline (last sync: {device.last_sync})")
+        
+        if count > 0:
+            db.commit()
+            logger.info(f"Marked {count} device(s) as offline")
+        
+        return count
 
 eink_device_service = EInkDeviceService()

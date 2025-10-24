@@ -224,6 +224,8 @@ async def list_all_devices(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
+    from .services.eink_device_service import eink_device_service
+    eink_device_service.update_offline_devices(db)
     return db.query(Device).all()
 
 @app.get("/courses/{course_id}/devices", response_model=List[DeviceResponse])
@@ -233,7 +235,9 @@ async def list_course_devices(
     current_user: User = Depends(require_tenant_access)
 ):
     from .auth import check_course_access
+    from .services.eink_device_service import eink_device_service
     check_course_access(course_id, current_user)
+    eink_device_service.update_offline_devices(db)
     return db.query(Device).filter(Device.course_id == course_id).all()
 
 @app.delete("/admin/devices/{device_id}")
