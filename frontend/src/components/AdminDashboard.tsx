@@ -37,8 +37,8 @@ const AdminDashboard = () => {
     start_time: '',
     end_time: '',
     days_of_week: [] as string[],
-    rotation_interval: '30',
-    rotation_unit: 'seconds',
+    rotation_interval: '1',
+    rotation_unit: 'hours',
     creative_file: null as File | null
   });
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
@@ -181,8 +181,8 @@ const AdminDashboard = () => {
         start_time: '',
         end_time: '',
         days_of_week: [],
-        rotation_interval: '30',
-        rotation_unit: 'seconds',
+        rotation_interval: '1',
+        rotation_unit: 'hours',
         creative_file: null
       });
       setPreviewDialogOpen(false);
