@@ -47,6 +47,7 @@ export const TenantDashboard: React.FC = () => {
     content: '',
     style_id: null as number | null,
     default_duration_minutes: 60,
+    recurrence_pattern: null as { type: 'daily' | 'weekly', days?: number[], time?: string } | null,
   });
   const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
   const [noticeDialogOpen, setNoticeDialogOpen] = useState(false);
@@ -555,6 +556,88 @@ export const TenantDashboard: React.FC = () => {
                         </option>
                       ))}
                     </select>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <label className="block text-sm font-medium mb-2">Recurring Schedule (Optional)</label>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Recurrence Type</label>
+                      <select
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                        value={newTemplate.recurrence_pattern?.type || ''}
+                        onChange={(e) => {
+                          if (e.target.value === '') {
+                            setNewTemplate({ ...newTemplate, recurrence_pattern: null });
+                          } else {
+                            setNewTemplate({ 
+                              ...newTemplate, 
+                              recurrence_pattern: { 
+                                type: e.target.value as 'daily' | 'weekly',
+                                days: e.target.value === 'weekly' ? [] : undefined,
+                                time: '09:00'
+                              } 
+                            });
+                          }
+                        }}
+                      >
+                        <option value="">None (One-time template)</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                      </select>
+                    </div>
+
+                    {newTemplate.recurrence_pattern?.type === 'weekly' && (
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Days of Week</label>
+                        <div className="flex gap-2 flex-wrap">
+                          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+                            <button
+                              key={day}
+                              type="button"
+                              className={`px-3 py-1 text-xs rounded border ${
+                                newTemplate.recurrence_pattern?.days?.includes(index)
+                                  ? 'bg-blue-500 text-white border-blue-500'
+                                  : 'bg-white text-gray-700 border-gray-300'
+                              }`}
+                              onClick={() => {
+                                const currentDays = newTemplate.recurrence_pattern?.days || [];
+                                const newDays = currentDays.includes(index)
+                                  ? currentDays.filter(d => d !== index)
+                                  : [...currentDays, index].sort();
+                                setNewTemplate({
+                                  ...newTemplate,
+                                  recurrence_pattern: {
+                                    ...newTemplate.recurrence_pattern!,
+                                    days: newDays
+                                  }
+                                });
+                              }}
+                            >
+                              {day}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {newTemplate.recurrence_pattern && (
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Time</label>
+                        <Input
+                          type="time"
+                          value={newTemplate.recurrence_pattern.time || '09:00'}
+                          onChange={(e) => setNewTemplate({
+                            ...newTemplate,
+                            recurrence_pattern: {
+                              ...newTemplate.recurrence_pattern!,
+                              time: e.target.value
+                            }
+                          })}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
                 
