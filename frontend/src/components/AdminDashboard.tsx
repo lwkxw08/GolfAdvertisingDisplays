@@ -8,12 +8,15 @@ import { Plus, Building, Monitor, Megaphone, BarChart3, LogOut, Bell, Settings, 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { ImagePreviewDialog } from './ImagePreviewDialog';
 import { PiImagerConfigDialog } from './PiImagerConfigDialog';
-import { apiClient, Course, Device, SponsorCampaign } from '../lib/api';
+import { apiClient, Course, Device, SponsorCampaign, Notice } from '../lib/api';
+import { Textarea } from './ui/textarea';
+import { Edit, Clock } from 'lucide-react';
 
 const AdminDashboard = () => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [campaigns, setCampaigns] = useState<SponsorCampaign[]>([]);
+  const [notices, setNotices] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
@@ -49,6 +52,9 @@ const AdminDashboard = () => {
   const [createdDevice, setCreatedDevice] = useState<Device | null>(null);
   const [selectedDeviceForSetup, setSelectedDeviceForSetup] = useState<Device | null>(null);
 
+  const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
+  const [noticeDialogOpen, setNoticeDialogOpen] = useState(false);
+
   const auditLogs = [
     { action: 'Course Created', user: 'admin@golfcms.com', timestamp: '2024-01-15 10:30:00' },
     { action: 'Device Added', user: 'admin@golfcms.com', timestamp: '2024-01-15 09:15:00' },
@@ -58,14 +64,16 @@ const AdminDashboard = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [coursesData, devicesData, campaignsData] = await Promise.all([
+      const [coursesData, devicesData, campaignsData, noticesData] = await Promise.all([
         apiClient.getCourses(),
         apiClient.getDevices(),
-        apiClient.getCampaigns()
+        apiClient.getCampaigns(),
+        apiClient.getAllNotices()
       ]);
       setCourses(coursesData);
       setDevices(devicesData);
       setCampaigns(campaignsData);
+      setNotices(noticesData);
       setError('');
     } catch (err) {
       setError('Failed to load data');
@@ -224,6 +232,44 @@ const AdminDashboard = () => {
   const handleDeleteCancel = () => {
     setDeleteDialogOpen(false);
     setDeleteTarget(null);
+  };
+
+  const handleEditNotice = (notice: Notice) => {
+    setEditingNotice(notice);
+    setNoticeDialogOpen(true);
+  };
+
+  const handleDeleteNotice = async (noticeId: number) => {
+    if (!confirm('Are you sure you want to delete this notice?')) return;
+    
+    try {
+      await apiClient.deleteNotice(noticeId);
+      await loadData();
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete notice');
+    }
+  };
+
+  const handleSaveNotice = async (noticeData: Partial<Notice>) => {
+    try {
+      if (editingNotice) {
+        await apiClient.updateNotice(editingNotice.id, noticeData);
+      }
+      setNoticeDialogOpen(false);
+      setEditingNotice(null);
+      await loadData();
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save notice');
+    }
+  };
+
+  const isNoticeActive = (notice: Notice) => {
+    const now = new Date();
+    const startTime = new Date(notice.start_time);
+    const endTime = new Date(notice.end_time);
+    return now >= startTime && now <= endTime && notice.is_active;
   };
 
   useEffect(() => {
@@ -657,9 +703,68 @@ const AdminDashboard = () => {
           </TabsContent>
 
           <TabsContent value="notices" className="space-y-6">
-            <div className="text-center py-8">
-              <h3 className="text-lg font-medium text-gray-900">Notice Management</h3>
-              <p className="text-gray-500">Temporary notices are managed by course staff in their tenant dashboard.</p>
+            <h2 className="text-2xl font-bold">Notice Management</h2>
+            
+            <div className="grid grid-cols-1 gap-4">
+              {notices.length === 0 ? (
+                <Card>
+                  <CardContent className="text-center py-8">
+                    <p className="text-gray-500">No notices created yet</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                notices
+                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                  .map((notice) => (
+                    <Card key={notice.id}>
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h3 className="text-lg font-semibold">{notice.title}</h3>
+                              <Badge variant={isNoticeActive(notice) ? "default" : "secondary"}>
+                                {isNoticeActive(notice) ? "Active" : "Expired"}
+                              </Badge>
+                            </div>
+                            <p className="text-gray-600 mb-3">{notice.content}</p>
+                            <div className="grid grid-cols-2 gap-4 text-sm text-gray-500">
+                              <div>
+                                <span className="font-medium">Device:</span> {devices.find(d => d.id === notice.device_id)?.name || 'Unknown'}
+                              </div>
+                              <div>
+                                <span className="font-medium">Course:</span> {courses.find(c => c.id === notice.course_id)?.name || 'Unknown'}
+                              </div>
+                              <div>
+                                <span className="font-medium">Start:</span> {new Date(notice.start_time).toLocaleString()}
+                              </div>
+                              <div>
+                                <span className="font-medium">End:</span> {new Date(notice.end_time).toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 ml-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditNotice(notice)}
+                            >
+                              <Edit className="w-4 h-4 mr-1" />
+                              Edit
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteNotice(notice.id)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+              )}
             </div>
           </TabsContent>
 
@@ -767,6 +872,60 @@ const AdminDashboard = () => {
         }}
         device={selectedDeviceForSetup}
       />
+
+      <Dialog open={noticeDialogOpen} onOpenChange={setNoticeDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Notice</DialogTitle>
+            <DialogDescription>Update notice details</DialogDescription>
+          </DialogHeader>
+          {editingNotice && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Title</label>
+                <Input
+                  value={editingNotice.title}
+                  onChange={(e) => setEditingNotice({...editingNotice, title: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Content</label>
+                <Textarea
+                  value={editingNotice.content}
+                  onChange={(e) => setEditingNotice({...editingNotice, content: e.target.value})}
+                  rows={4}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Start Time</label>
+                  <Input
+                    type="datetime-local"
+                    value={new Date(editingNotice.start_time).toISOString().slice(0, 16)}
+                    onChange={(e) => setEditingNotice({...editingNotice, start_time: new Date(e.target.value).toISOString()})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">End Time</label>
+                  <Input
+                    type="datetime-local"
+                    value={new Date(editingNotice.end_time).toISOString().slice(0, 16)}
+                    onChange={(e) => setEditingNotice({...editingNotice, end_time: new Date(e.target.value).toISOString()})}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNoticeDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => handleSaveNotice(editingNotice!)}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
