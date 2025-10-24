@@ -356,6 +356,126 @@ class SSOProvider(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+class AlertType(str, enum.Enum):
+    DEVICE_OFFLINE = "device_offline"
+    LOW_BATTERY = "low_battery"
+    HIGH_TEMPERATURE = "high_temperature"
+    DISPLAY_ERROR = "display_error"
+    CONNECTIVITY_ISSUE = "connectivity_issue"
+    STORAGE_FULL = "storage_full"
+    FIRMWARE_UPDATE_FAILED = "firmware_update_failed"
+
+class AlertSeverity(str, enum.Enum):
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+class NotificationStatus(str, enum.Enum):
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+class CommandStatus(str, enum.Enum):
+    PENDING = "pending"
+    EXECUTING = "executing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+class DeviceHealthMetric(Base):
+    __tablename__ = "device_health_metrics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
+    battery_level = Column(Float, nullable=True)
+    battery_voltage = Column(Float, nullable=True)
+    is_charging = Column(Boolean, default=False)
+    connectivity_type = Column(String(20), nullable=True)
+    signal_strength = Column(Float, nullable=True)
+    wifi_ssid = Column(String(100), nullable=True)
+    temperature = Column(Float, nullable=True)
+    cpu_usage = Column(Float, nullable=True)
+    memory_usage = Column(Float, nullable=True)
+    storage_usage = Column(Float, nullable=True)
+    display_errors = Column(Integer, default=0)
+    last_error = Column(Text, nullable=True)
+    uptime_seconds = Column(Integer, nullable=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    
+    device = relationship("Device")
+    
+    __table_args__ = (
+        Index('idx_device_health_device_timestamp', 'device_id', 'timestamp'),
+    )
+
+class DeviceAlert(Base):
+    __tablename__ = "device_alerts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
+    alert_type = Column(Enum(AlertType), nullable=False)
+    severity = Column(Enum(AlertSeverity), nullable=False)
+    title = Column(String(200), nullable=False)
+    message = Column(Text, nullable=False)
+    is_resolved = Column(Boolean, default=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    metadata = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    device = relationship("Device")
+    resolver = relationship("User", foreign_keys=[resolved_by])
+    notifications = relationship("AlertNotification", back_populates="alert")
+    
+    __table_args__ = (
+        Index('idx_device_alerts_device', 'device_id'),
+        Index('idx_device_alerts_type', 'alert_type'),
+        Index('idx_device_alerts_resolved', 'is_resolved'),
+    )
+
+class AlertNotification(Base):
+    __tablename__ = "alert_notifications"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    alert_id = Column(Integer, ForeignKey("device_alerts.id"), nullable=False)
+    notification_type = Column(String(20), nullable=False)  # email, sms
+    recipient = Column(String(200), nullable=False)
+    status = Column(Enum(NotificationStatus), nullable=False, default=NotificationStatus.PENDING)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    error_message = Column(Text, nullable=True)
+    retry_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    alert = relationship("DeviceAlert", back_populates="notifications")
+    
+    __table_args__ = (
+        Index('idx_alert_notifications_status', 'status'),
+    )
+
+class DeviceRemoteCommand(Base):
+    __tablename__ = "device_remote_commands"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
+    command_type = Column(String(50), nullable=False)  # reboot, refresh_display, update_firmware, get_logs, etc.
+    command_data = Column(JSON, nullable=True)
+    status = Column(Enum(CommandStatus), nullable=False, default=CommandStatus.PENDING)
+    issued_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    issued_at = Column(DateTime(timezone=True), server_default=func.now())
+    executed_at = Column(DateTime(timezone=True), nullable=True)
+    result = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    
+    device = relationship("Device")
+    issuer = relationship("User", foreign_keys=[issued_by])
+    
+    __table_args__ = (
+        Index('idx_device_commands_device', 'device_id'),
+        Index('idx_device_commands_status', 'status'),
+    )
+
 def get_db():
     db = SessionLocal()
     try:

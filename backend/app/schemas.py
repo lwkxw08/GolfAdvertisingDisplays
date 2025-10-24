@@ -1,7 +1,7 @@
 from pydantic import BaseModel, validator, EmailStr
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from .database import UserRole, CampaignInterval, SubscriptionStatus, PlanType, DeviceOrientation
+from .database import UserRole, CampaignInterval, SubscriptionStatus, PlanType, DeviceOrientation, AlertType, AlertSeverity, NotificationStatus, CommandStatus
 
 class UserBase(BaseModel):
     email: str
@@ -331,3 +331,138 @@ class EnhancedNoticeCreate(BaseModel):
         if v < datetime.now(timezone.utc).replace(hour=datetime.now(timezone.utc).hour - 1):
             raise ValueError('Start time cannot be more than 1 hour in the past')
         return v
+
+# Device Monitoring & Health Schemas
+
+class DeviceHealthMetricResponse(BaseModel):
+    id: int
+    device_id: int
+    battery_level: Optional[float]
+    battery_voltage: Optional[float]
+    is_charging: bool
+    connectivity_type: Optional[str]
+    signal_strength: Optional[float]
+    wifi_ssid: Optional[str]
+    temperature: Optional[float]
+    cpu_usage: Optional[float]
+    memory_usage: Optional[float]
+    storage_usage: Optional[float]
+    display_errors: int
+    last_error: Optional[str]
+    uptime_seconds: Optional[int]
+    timestamp: datetime
+    
+    class Config:
+        from_attributes = True
+
+class DeviceHealthSummary(BaseModel):
+    device_id: int
+    device_name: str
+    is_online: bool
+    last_seen: Optional[datetime]
+    battery_level: Optional[float]
+    is_charging: bool
+    signal_strength: Optional[float]
+    temperature: Optional[float]
+    storage_usage: Optional[float]
+    uptime_hours: Optional[float]
+    error_count_24h: int
+    last_error: Optional[str]
+    health_score: float  # 0-100
+
+class DeviceAlertCreate(BaseModel):
+    device_id: int
+    alert_type: AlertType
+    severity: AlertSeverity
+    title: str
+    message: str
+    metadata: Optional[Dict[str, Any]] = None
+
+class DeviceAlertResponse(BaseModel):
+    id: int
+    device_id: int
+    alert_type: AlertType
+    severity: AlertSeverity
+    title: str
+    message: str
+    is_resolved: bool
+    resolved_at: Optional[datetime]
+    resolved_by: Optional[int]
+    metadata: Optional[Dict[str, Any]]
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class DeviceAlertResolve(BaseModel):
+    resolution_note: Optional[str] = None
+
+class AlertNotificationResponse(BaseModel):
+    id: int
+    alert_id: int
+    notification_type: str
+    recipient: str
+    status: NotificationStatus
+    sent_at: Optional[datetime]
+    error_message: Optional[str]
+    retry_count: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class DeviceRemoteCommandCreate(BaseModel):
+    device_id: int
+    command_type: str  # reboot, refresh_display, update_firmware, get_logs, clear_cache, test_display
+    command_data: Optional[Dict[str, Any]] = None
+
+class DeviceRemoteCommandResponse(BaseModel):
+    id: int
+    device_id: int
+    command_type: str
+    command_data: Optional[Dict[str, Any]]
+    status: CommandStatus
+    issued_by: int
+    issued_at: datetime
+    executed_at: Optional[datetime]
+    result: Optional[Dict[str, Any]]
+    error_message: Optional[str]
+    
+    class Config:
+        from_attributes = True
+
+class DeviceStatusUpdate(BaseModel):
+    is_online: bool
+    battery_level: Optional[float] = None
+    battery_voltage: Optional[float] = None
+    is_charging: Optional[bool] = None
+    connectivity_type: Optional[str] = None
+    signal_strength: Optional[float] = None
+    wifi_ssid: Optional[str] = None
+    temperature: Optional[float] = None
+    cpu_usage: Optional[float] = None
+    memory_usage: Optional[float] = None
+    storage_usage: Optional[float] = None
+    display_errors: Optional[int] = None
+    last_error: Optional[str] = None
+    uptime_seconds: Optional[int] = None
+
+class AlertStatistics(BaseModel):
+    total_alerts: int
+    unresolved_alerts: int
+    critical_alerts: int
+    alerts_by_type: Dict[str, int]
+    alerts_by_severity: Dict[str, int]
+    recent_alerts: List[DeviceAlertResponse]
+
+class DeviceMonitoringDashboard(BaseModel):
+    total_devices: int
+    online_devices: int
+    offline_devices: int
+    devices_with_alerts: int
+    critical_alerts: int
+    avg_battery_level: Optional[float]
+    avg_signal_strength: Optional[float]
+    devices_low_battery: int
+    devices_high_temp: int
+    device_health_summary: List[DeviceHealthSummary]
