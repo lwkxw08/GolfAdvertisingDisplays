@@ -33,15 +33,13 @@ class SupabaseStorageService:
                 file_options={"content-type": content_type}
             )
             
-            if result.data:
-                public_url = self.supabase.storage.from_(self.bucket_name).get_public_url(unique_filename)
-                return public_url
-            else:
-                print(f"Error uploading file to Supabase Storage: {result}")
-                return None
+            public_url = self.supabase.storage.from_(self.bucket_name).get_public_url(unique_filename)
+            return public_url
                 
         except Exception as e:
             print(f"Error uploading file to Supabase Storage: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def delete_file(self, file_url: str) -> bool:
