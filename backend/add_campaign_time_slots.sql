@@ -20,3 +20,8 @@ COMMENT ON COLUMN sponsor_campaigns.end_time IS 'End time in HH:MM format (e.g.,
 COMMENT ON COLUMN sponsor_campaigns.days_of_week IS 'JSON array of days (e.g., ["monday", "tuesday"])';
 COMMENT ON COLUMN sponsor_campaigns.updated_at IS 'Timestamp of last update';
 COMMENT ON COLUMN devices.orientation IS 'Device screen orientation: PORTRAIT or LANDSCAPE';
+
+-- Add recurrence_pattern field to notice_templates table
+ALTER TABLE notice_templates ADD COLUMN IF NOT EXISTS recurrence_pattern JSON;
+
+COMMENT ON COLUMN notice_templates.recurrence_pattern IS 'Recurring pattern: {"type": "daily"|"weekly", "days": [...], "time": "HH:MM"}';
