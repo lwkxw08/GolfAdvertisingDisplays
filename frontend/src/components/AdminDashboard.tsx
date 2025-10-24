@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Plus, Building, Monitor, Megaphone, BarChart3, LogOut, Bell, Settings, Shield, Trash2, Info, Activity } from 'lucide-react';
+import { Plus, Building, Monitor, Megaphone, BarChart3, LogOut, Bell, Settings, Shield, Trash2, Info } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { ImagePreviewDialog } from './ImagePreviewDialog';
 import { PiImagerConfigDialog } from './PiImagerConfigDialog';

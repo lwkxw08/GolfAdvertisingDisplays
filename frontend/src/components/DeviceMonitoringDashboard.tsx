@@ -13,10 +13,7 @@ import {
   RefreshCw,
   Terminal,
   CheckCircle,
-  XCircle,
-  Clock,
-  TrendingUp,
-  TrendingDown
+  Clock
 } from 'lucide-react';
 import { apiClient } from '../lib/api';
 
@@ -64,7 +61,6 @@ const DeviceMonitoringDashboard: React.FC = () => {
   const [alerts, setAlerts] = useState<DeviceAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedDevice, setSelectedDevice] = useState<number | null>(null);
 
   useEffect(() => {
     loadDashboardData();
