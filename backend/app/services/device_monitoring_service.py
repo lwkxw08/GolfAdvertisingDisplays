@@ -36,7 +36,7 @@ class DeviceMonitoringService:
                     severity=AlertSeverity.WARNING if health.battery_level > 10 else AlertSeverity.CRITICAL,
                     title=f"Low Battery: {device.name}",
                     message=f"Device battery level is at {health.battery_level}%. Please charge the device.",
-                    metadata={"battery_level": health.battery_level}
+                    alert_metadata={"battery_level": health.battery_level}
                 ))
         
         if health.temperature is not None and health.temperature > 70:
@@ -53,7 +53,7 @@ class DeviceMonitoringService:
                     severity=AlertSeverity.WARNING if health.temperature < 80 else AlertSeverity.ERROR,
                     title=f"High Temperature: {device.name}",
                     message=f"Device temperature is {health.temperature}°C. Check device ventilation.",
-                    metadata={"temperature": health.temperature}
+                    alert_metadata={"temperature": health.temperature}
                 ))
         
         if health.storage_usage is not None and health.storage_usage > 90:
@@ -70,7 +70,7 @@ class DeviceMonitoringService:
                     severity=AlertSeverity.WARNING,
                     title=f"Storage Almost Full: {device.name}",
                     message=f"Device storage is {health.storage_usage}% full. Consider clearing cache.",
-                    metadata={"storage_usage": health.storage_usage}
+                    alert_metadata={"storage_usage": health.storage_usage}
                 ))
         
         if health.display_errors > 0:
@@ -87,7 +87,7 @@ class DeviceMonitoringService:
                     severity=AlertSeverity.ERROR,
                     title=f"Display Errors: {device.name}",
                     message=f"Device has {health.display_errors} display errors. Last error: {health.last_error or 'Unknown'}",
-                    metadata={"error_count": health.display_errors, "last_error": health.last_error}
+                    alert_metadata={"error_count": health.display_errors, "last_error": health.last_error}
                 ))
         
         for alert in alerts_to_create:
@@ -168,7 +168,7 @@ class DeviceMonitoringService:
                     severity=AlertSeverity.ERROR,
                     title=f"Device Offline: {device.name}",
                     message=f"Device has not synced since {device.last_sync.strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                    metadata={"last_sync": device.last_sync.isoformat()}
+                    alert_metadata={"last_sync": device.last_sync.isoformat()}
                 )
                 db.add(alert)
         

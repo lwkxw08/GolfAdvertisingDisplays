@@ -230,9 +230,9 @@ async def resolve_alert(
     alert.resolved_by = current_user.id
     
     if resolution.resolution_note:
-        if not alert.metadata:
-            alert.metadata = {}
-        alert.metadata["resolution_note"] = resolution.resolution_note
+        if not alert.alert_metadata:
+            alert.alert_metadata = {}
+        alert.alert_metadata["resolution_note"] = resolution.resolution_note
     
     db.commit()
     db.refresh(alert)
