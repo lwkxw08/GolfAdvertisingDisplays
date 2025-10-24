@@ -743,6 +743,26 @@ const AdminDashboard = () => {
                             </div>
                           </div>
                           <div className="flex gap-2 ml-4">
+                            {!isNoticeActive(notice) && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  const now = new Date();
+                                  const duration = new Date(notice.end_time).getTime() - new Date(notice.start_time).getTime();
+                                  const newEndTime = new Date(now.getTime() + duration);
+                                  setEditingNotice({
+                                    ...notice,
+                                    start_time: now.toISOString(),
+                                    end_time: newEndTime.toISOString()
+                                  });
+                                  setNoticeDialogOpen(true);
+                                }}
+                              >
+                                <Clock className="w-4 h-4 mr-1" />
+                                Re-use
+                              </Button>
+                            )}
                             <Button
                               variant="outline"
                               size="sm"
