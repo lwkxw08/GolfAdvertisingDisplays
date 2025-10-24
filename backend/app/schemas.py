@@ -131,11 +131,20 @@ class NoticeCreate(NoticeBase):
             raise ValueError('Start time cannot be more than 1 hour in the past')
         return v
 
+class NoticeUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
+    is_active: Optional[bool] = None
+
 class NoticeResponse(NoticeBase):
     id: int
     course_id: int
     created_by: int
     end_time: datetime
+    duration_minutes: int
     is_active: bool
     created_at: datetime
     
@@ -282,7 +291,16 @@ class NoticeTemplateBase(BaseModel):
     default_duration_minutes: int = 60
 
 class NoticeTemplateCreate(NoticeTemplateBase):
-    pass
+    recurrence_pattern: Optional[Dict[str, Any]] = None  # {"type": "daily"|"weekly", "days": [...], "time": "HH:MM"}
+
+class NoticeTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    title: Optional[str] = None
+    content: Optional[str] = None
+    style_id: Optional[int] = None
+    default_duration_minutes: Optional[int] = None
+    recurrence_pattern: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = None
 
 class NoticeTemplateResponse(NoticeTemplateBase):
     id: int

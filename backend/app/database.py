@@ -167,6 +167,7 @@ class NoticeTemplate(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     style_id = Column(Integer, ForeignKey("notice_styles.id"), nullable=True)
     default_duration_minutes = Column(Integer, default=60)
+    recurrence_pattern = Column(JSON, nullable=True)  # {"type": "daily"|"weekly", "days": [...], "time": "HH:MM"}
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

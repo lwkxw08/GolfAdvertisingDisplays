@@ -23,11 +23,11 @@ from .auth import (
 from .schemas import (
     Token, LoginRequest, UserResponse, UserCreate, CourseResponse, CourseCreate,
     DeviceResponse, DeviceCreate, SponsorCampaignResponse, SponsorCampaignCreate,
-    SponsorCampaignUpdate, NoticeResponse, NoticeCreate, PlaylistItem, DevicePlaylist,
+    SponsorCampaignUpdate, NoticeResponse, NoticeCreate, NoticeUpdate, PlaylistItem, DevicePlaylist,
     CourseRegistrationRequest, SubscriptionResponse, DeviceAnalyticsResponse,
     AnalyticsSummary, CourseAnalytics, EmailTemplateResponse, RevenueAnalytics,
     TenantUsageAnalytics, SystemPerformanceMetrics, OnboardingProgress, BackupResult,
-    NoticeTemplateResponse, NoticeTemplateCreate, EnhancedNoticeCreate
+    NoticeTemplateResponse, NoticeTemplateCreate, NoticeTemplateUpdate, EnhancedNoticeCreate
 )
 from .database import (
     User, Course, Device, SponsorCampaign, Notice, UserRole, Subscription,
@@ -441,6 +441,61 @@ async def bulk_create_campaigns(
             )
     
     return created_campaigns
+
+@app.get("/admin/notices", response_model=List[NoticeResponse])
+async def list_all_notices(
+    course_id: Optional[int] = None,
+    device_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """List all notices with optional filtering by course or device"""
+    query = db.query(Notice)
+    
+    if course_id:
+        query = query.filter(Notice.course_id == course_id)
+    if device_id:
+        query = query.filter(Notice.device_id == device_id)
+    
+    return query.order_by(Notice.created_at.desc()).all()
+
+@app.put("/admin/notices/{notice_id}", response_model=NoticeResponse)
+async def update_notice(
+    notice_id: int,
+    notice_data: NoticeUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Update an existing notice"""
+    db_notice = db.query(Notice).filter(Notice.id == notice_id).first()
+    if not db_notice:
+        raise HTTPException(status_code=404, detail="Notice not found")
+    
+    update_data = notice_data.dict(exclude_unset=True)
+    
+    for key, value in update_data.items():
+        setattr(db_notice, key, value)
+    
+    db.commit()
+    db.refresh(db_notice)
+    
+    return db_notice
+
+@app.delete("/admin/notices/{notice_id}")
+async def delete_notice(
+    notice_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Delete a notice"""
+    db_notice = db.query(Notice).filter(Notice.id == notice_id).first()
+    if not db_notice:
+        raise HTTPException(status_code=404, detail="Notice not found")
+    
+    db.delete(db_notice)
+    db.commit()
+    
+    return {"message": "Notice deleted successfully"}
 
 @app.post("/courses/{course_id}/notices", response_model=NoticeResponse)
 async def create_notice(
