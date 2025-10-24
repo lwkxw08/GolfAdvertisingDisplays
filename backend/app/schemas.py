@@ -144,7 +144,7 @@ class NoticeResponse(NoticeBase):
     course_id: int
     created_by: int
     end_time: datetime
-    duration_minutes: int
+    duration_minutes: Optional[int] = None
     is_active: bool
     created_at: datetime
     
