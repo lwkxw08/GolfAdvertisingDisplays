@@ -280,4 +280,18 @@ class ImageProcessingService:
         logger.info(f"Batch processing complete: {len(results['processed'])} success, {len(results['failed'])} failed")
         return results
 
+    def preview_notice_eink(self, notice_data: Dict[str, Any], orientation: str = 'portrait') -> Dict[str, str]:
+        """Generate preview of notice for E-ink display"""
+        try:
+            image_path = self.create_notice_image(notice_data, orientation=orientation)
+            
+            return {
+                'preview_url': image_path,
+                'orientation': orientation
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to generate notice preview: {e}")
+            raise
+
 image_processing_service = ImageProcessingService()
