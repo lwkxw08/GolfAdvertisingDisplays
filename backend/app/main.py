@@ -479,10 +479,35 @@ async def update_notice(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
-    """Update an existing notice"""
+    """Update an existing notice (admin only)"""
     db_notice = db.query(Notice).filter(Notice.id == notice_id).first()
     if not db_notice:
         raise HTTPException(status_code=404, detail="Notice not found")
+    
+    update_data = notice_data.dict(exclude_unset=True)
+    
+    for key, value in update_data.items():
+        setattr(db_notice, key, value)
+    
+    db.commit()
+    db.refresh(db_notice)
+    
+    return db_notice
+
+@app.put("/api/notices/{notice_id}", response_model=NoticeResponse)
+async def update_notice_tenant(
+    notice_id: int,
+    notice_data: NoticeUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_tenant_access)
+):
+    """Update an existing notice (tenant access)"""
+    db_notice = db.query(Notice).filter(Notice.id == notice_id).first()
+    if not db_notice:
+        raise HTTPException(status_code=404, detail="Notice not found")
+    
+    from .auth import check_course_access
+    check_course_access(db_notice.course_id, current_user)
     
     update_data = notice_data.dict(exclude_unset=True)
     
@@ -500,10 +525,29 @@ async def delete_notice(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
-    """Delete a notice"""
+    """Delete a notice (admin only)"""
     db_notice = db.query(Notice).filter(Notice.id == notice_id).first()
     if not db_notice:
         raise HTTPException(status_code=404, detail="Notice not found")
+    
+    db.delete(db_notice)
+    db.commit()
+    
+    return {"message": "Notice deleted successfully"}
+
+@app.delete("/api/notices/{notice_id}")
+async def delete_notice_tenant(
+    notice_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_tenant_access)
+):
+    """Delete a notice (tenant access)"""
+    db_notice = db.query(Notice).filter(Notice.id == notice_id).first()
+    if not db_notice:
+        raise HTTPException(status_code=404, detail="Notice not found")
+    
+    from .auth import check_course_access
+    check_course_access(db_notice.course_id, current_user)
     
     db.delete(db_notice)
     db.commit()
@@ -590,6 +634,55 @@ async def create_notice_template(
     db.commit()
     db.refresh(db_template)
     return db_template
+
+@app.put("/courses/{course_id}/notice-templates/{template_id}", response_model=NoticeTemplateResponse)
+async def update_notice_template(
+    course_id: int,
+    template_id: int,
+    template_data: NoticeTemplateCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_tenant_access)
+):
+    from .auth import check_course_access
+    check_course_access(course_id, current_user)
+    
+    db_template = db.query(NoticeTemplate).filter(
+        NoticeTemplate.id == template_id,
+        NoticeTemplate.course_id == course_id
+    ).first()
+    
+    if not db_template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    for key, value in template_data.dict().items():
+        setattr(db_template, key, value)
+    
+    db.commit()
+    db.refresh(db_template)
+    return db_template
+
+@app.delete("/courses/{course_id}/notice-templates/{template_id}")
+async def delete_notice_template(
+    course_id: int,
+    template_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_tenant_access)
+):
+    from .auth import check_course_access
+    check_course_access(course_id, current_user)
+    
+    db_template = db.query(NoticeTemplate).filter(
+        NoticeTemplate.id == template_id,
+        NoticeTemplate.course_id == course_id
+    ).first()
+    
+    if not db_template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    db.delete(db_template)
+    db.commit()
+    
+    return {"message": "Template deleted successfully"}
 
 @app.post("/courses/{course_id}/notices/enhanced", response_model=NoticeResponse)
 async def create_enhanced_notice(
