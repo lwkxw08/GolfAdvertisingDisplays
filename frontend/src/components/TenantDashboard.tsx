@@ -7,7 +7,8 @@ import { Textarea } from './ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
-import { Plus, Monitor, Bell, LogOut, Clock } from 'lucide-react';
+import { Plus, Monitor, Bell, LogOut, Clock, Eye } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 
 export const TenantDashboard: React.FC = () => {
   const { user, logout } = useAuth();
@@ -37,6 +38,9 @@ export const TenantDashboard: React.FC = () => {
   const [noticeStyles, setNoticeStyles] = useState<any[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [newTemplate, setNewTemplate] = useState({
     name: '',
     title: '',
@@ -147,6 +151,29 @@ export const TenantDashboard: React.FC = () => {
       return `${hours}h ${minutes % 60}m remaining`;
     }
     return `${minutes}m remaining`;
+  };
+
+  const handlePreviewNotice = async () => {
+    if (!newNotice.title || !newNotice.content || !newNotice.device_id) {
+      setError('Please fill in title, content, and select a device before previewing');
+      return;
+    }
+
+    try {
+      setPreviewLoading(true);
+      setError('');
+      const result = await apiClient.previewNoticeEink({
+        title: newNotice.title,
+        content: newNotice.content,
+        device_id: newNotice.device_id,
+      });
+      setPreviewUrl(result.preview_url);
+      setShowPreview(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate preview');
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   if (loading) {
@@ -309,6 +336,15 @@ export const TenantDashboard: React.FC = () => {
                   )}
                   
                   <div className="flex space-x-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handlePreviewNotice}
+                      disabled={previewLoading || !newNotice.title || !newNotice.content || !newNotice.device_id}
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      {previewLoading ? 'Loading...' : 'Preview'}
+                    </Button>
                     <Button type="submit" className="flex-1">
                       <Plus className="w-4 h-4 mr-2" />
                       Create Notice
@@ -484,6 +520,26 @@ export const TenantDashboard: React.FC = () => {
             </div>
           </div>
         )}
+
+        <Dialog open={showPreview} onOpenChange={setShowPreview}>
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>Notice Preview - E-ink Display</DialogTitle>
+              <DialogDescription>
+                Preview how your notice will appear on the device's E-ink display
+              </DialogDescription>
+            </DialogHeader>
+            {previewUrl && (
+              <div className="flex justify-center bg-gray-100 p-4 rounded-lg">
+                <img
+                  src={previewUrl}
+                  alt="Notice Preview"
+                  className="max-w-full max-h-96 border-2 border-gray-300 rounded shadow-lg"
+                />
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );
