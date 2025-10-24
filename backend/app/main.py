@@ -548,9 +548,15 @@ async def list_notices(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_tenant_access)
 ):
-    from .auth import check_course_access
-    check_course_access(course_id, current_user)
-    return db.query(Notice).filter(Notice.course_id == course_id).all()
+    try:
+        from .auth import check_course_access
+        check_course_access(course_id, current_user, db)
+        return db.query(Notice).filter(Notice.course_id == course_id).all()
+    except Exception as e:
+        print(f"ERROR in list_notices: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 @app.get("/courses/{course_id}/notice-templates", response_model=List[NoticeTemplateResponse])
 async def list_notice_templates(

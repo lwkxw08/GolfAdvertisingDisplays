@@ -104,7 +104,7 @@ def require_course_manager(current_user: User = Depends(get_current_user)):
 def require_tenant_access(current_user: User = Depends(get_current_user)):
     return current_user
 
-def check_course_access(course_id: int, current_user: User):
+def check_course_access(course_id: int, current_user: User, db: Session = None):
     if hasattr(current_user.role, 'value'):
         role_value = current_user.role.value
     else:
@@ -115,17 +115,17 @@ def check_course_access(course_id: int, current_user: User):
         return True
     
     if (role_value == 'REGIONAL_ADMIN' or current_user.role == UserRole.REGIONAL_ADMIN) and current_user.region_id:
-        from .database import Course, get_db
-        db = next(get_db())
-        course = db.query(Course).filter(Course.id == course_id).first()
-        if course and course.region_id == current_user.region_id:
-            return True
+        if db:
+            from .database import Course
+            course = db.query(Course).filter(Course.id == course_id).first()
+            if course and course.region_id == current_user.region_id:
+                return True
     
     if (role_value in ['COURSE_MANAGER', 'CLIENT_TENANT', 'CLIENT'] or 
         current_user.role in [UserRole.COURSE_MANAGER, UserRole.CLIENT_TENANT]) and current_user.course_id == course_id:
-        return True  # Course managers and tenants have access to their own course
+        return True
     
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="Access denied to this course"
+        detail=f"Access denied to this course. User course_id: {current_user.course_id}, requested course_id: {course_id}, role: {role_value}"
     )
