@@ -37,6 +37,8 @@ const AdminDashboard = () => {
     start_time: '',
     end_time: '',
     days_of_week: [] as string[],
+    rotation_interval: '30',
+    rotation_unit: 'seconds',
     creative_file: null as File | null
   });
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
@@ -132,6 +134,8 @@ const AdminDashboard = () => {
         start_time: newCampaign.start_time,
         end_time: newCampaign.end_time,
         days_of_week: newCampaign.days_of_week,
+        rotation_interval: newCampaign.rotation_interval,
+        rotation_unit: newCampaign.rotation_unit,
         creative_file: newCampaign.creative_file
       });
       setPreviewDialogOpen(true);
@@ -154,6 +158,8 @@ const AdminDashboard = () => {
       formData.append('device_id', pendingCampaignData.device_id);
       formData.append('start_date', pendingCampaignData.start_date);
       formData.append('end_date', pendingCampaignData.end_date);
+      formData.append('rotation_interval', pendingCampaignData.rotation_interval);
+      formData.append('rotation_unit', pendingCampaignData.rotation_unit);
       if (pendingCampaignData.start_time) {
         formData.append('start_time', pendingCampaignData.start_time);
       }
@@ -163,7 +169,7 @@ const AdminDashboard = () => {
       if (pendingCampaignData.days_of_week && pendingCampaignData.days_of_week.length > 0) {
         formData.append('days_of_week', JSON.stringify(pendingCampaignData.days_of_week));
       }
-      formData.append('creative_file', pendingCampaignData.creative_file);
+      formData.append('creative', pendingCampaignData.creative_file);
       
       await apiClient.createCampaign(formData);
       
@@ -175,6 +181,8 @@ const AdminDashboard = () => {
         start_time: '',
         end_time: '',
         days_of_week: [],
+        rotation_interval: '30',
+        rotation_unit: 'seconds',
         creative_file: null
       });
       setPreviewDialogOpen(false);
