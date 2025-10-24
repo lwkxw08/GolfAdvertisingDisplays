@@ -44,6 +44,10 @@ class PlanType(str, enum.Enum):
     PREMIUM = "premium"
     ENTERPRISE = "enterprise"
 
+class DeviceOrientation(str, enum.Enum):
+    PORTRAIT = "portrait"
+    LANDSCAPE = "landscape"
+
 class User(Base):
     __tablename__ = "users"
     
@@ -96,6 +100,7 @@ class Device(Base):
     hardware_version = Column(String, nullable=True)
     remote_update_enabled = Column(Boolean, default=True)
     diagnostic_enabled = Column(Boolean, default=True)
+    orientation = Column(Enum(DeviceOrientation), nullable=False, default=DeviceOrientation.PORTRAIT)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     course = relationship("Course", back_populates="devices")

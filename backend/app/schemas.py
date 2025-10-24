@@ -1,7 +1,7 @@
 from pydantic import BaseModel, validator, EmailStr
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from .database import UserRole, CampaignInterval, SubscriptionStatus, PlanType
+from .database import UserRole, CampaignInterval, SubscriptionStatus, PlanType, DeviceOrientation
 
 class UserBase(BaseModel):
     email: str
@@ -60,6 +60,7 @@ class DeviceBase(BaseModel):
     name: str
     device_id: str
     course_id: int
+    orientation: DeviceOrientation = DeviceOrientation.PORTRAIT
 
 class DeviceCreate(DeviceBase):
     pass
@@ -68,6 +69,7 @@ class DeviceResponse(DeviceBase):
     id: int
     is_online: bool
     last_sync: Optional[datetime]
+    orientation: DeviceOrientation
     created_at: datetime
     
     class Config:

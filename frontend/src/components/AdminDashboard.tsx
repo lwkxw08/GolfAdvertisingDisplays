@@ -22,7 +22,8 @@ const AdminDashboard = () => {
     name: '', 
     device_id: '', 
     course_id: 0, 
-    location: '' 
+    location: '',
+    orientation: 'portrait' as 'portrait' | 'landscape'
   });
   const [newCampaign, setNewCampaign] = useState({
     sponsor_name: '',
@@ -90,7 +91,7 @@ const AdminDashboard = () => {
       console.log('Device created successfully:', createdDeviceData);
       setCreatedDevice(createdDeviceData);
       console.log('Set createdDevice state - useEffect will open dialog');
-      setNewDevice({ name: '', device_id: '', course_id: 0, location: '' });
+      setNewDevice({ name: '', device_id: '', course_id: 0, location: '', orientation: 'portrait' });
       loadData();
     } catch (err) {
       console.error('Error creating device:', err);
@@ -386,7 +387,7 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleCreateDevice} className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <Input
                       placeholder="Device Name"
                       value={newDevice.name}
@@ -417,6 +418,15 @@ const AdminDashboard = () => {
                           {course.name}
                         </option>
                       ))}
+                    </select>
+                    <select
+                      className="px-3 py-2 border border-gray-300 rounded-md"
+                      value={newDevice.orientation}
+                      onChange={(e) => setNewDevice({ ...newDevice, orientation: e.target.value as 'portrait' | 'landscape' })}
+                      required
+                    >
+                      <option value="portrait">Portrait</option>
+                      <option value="landscape">Landscape</option>
                     </select>
                   </div>
                   <Input
@@ -449,6 +459,10 @@ const AdminDashboard = () => {
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600">Device ID:</span>
                         <span className="text-sm font-mono">{device.device_id}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Orientation:</span>
+                        <span className="text-sm capitalize">{device.orientation || 'portrait'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600">Status:</span>
@@ -664,6 +678,7 @@ const AdminDashboard = () => {
         onApprove={handlePreviewApprove}
         onReject={handlePreviewReject}
         loading={campaignLoading}
+        orientation={devices.find(d => d.id === parseInt(newCampaign.device_id))?.orientation || 'portrait'}
       />
 
       <PiImagerConfigDialog

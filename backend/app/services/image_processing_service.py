@@ -25,7 +25,7 @@ class ImageProcessingService:
         self.supported_formats = ['JPEG', 'PNG', 'BMP', 'TIFF']
         self.max_file_size = 5 * 1024 * 1024  # 5MB
     
-    def process_image_for_e6(self, image_path: str, output_path: Optional[str] = None) -> str:
+    def process_image_for_e6(self, image_path: str, output_path: Optional[str] = None, orientation: str = 'portrait') -> str:
         """Process image for Waveshare E6 display"""
         try:
             with Image.open(image_path) as img:
@@ -35,7 +35,7 @@ class ImageProcessingService:
                 if img.mode != 'RGB':
                     img = img.convert('RGB')
                 
-                processed_img = self._resize_for_e6(img)
+                processed_img = self._resize_for_e6(img, orientation)
                 
                 e6_img = self._convert_to_e6_colors(processed_img)
                 
@@ -47,17 +47,21 @@ class ImageProcessingService:
                 
                 optimized_img.save(output_path, 'PNG', optimize=True)
                 
-                logger.info(f"Processed image for E6: {image_path} -> {output_path}")
+                logger.info(f"Processed image for E6 ({orientation}): {image_path} -> {output_path}")
                 return output_path
                 
         except Exception as e:
             logger.error(f"Failed to process image {image_path}: {e}")
             raise
     
-    def _resize_for_e6(self, img: Image.Image) -> Image.Image:
+    def _resize_for_e6(self, img: Image.Image, orientation: str = 'portrait') -> Image.Image:
         """Resize image to E6 display dimensions with proper aspect ratio"""
         original_width, original_height = img.size
-        target_width, target_height = self.E6_WIDTH, self.E6_HEIGHT
+        
+        if orientation == 'landscape':
+            target_width, target_height = self.E6_HEIGHT, self.E6_WIDTH
+        else:
+            target_width, target_height = self.E6_WIDTH, self.E6_HEIGHT
         
         scale_w = target_width / original_width
         scale_h = target_height / original_height
@@ -106,10 +110,15 @@ class ImageProcessingService:
         
         return img
     
-    def create_notice_image(self, notice_data: Dict[str, Any]) -> str:
+    def create_notice_image(self, notice_data: Dict[str, Any], orientation: str = 'portrait') -> str:
         """Create optimized notice image for E-ink display"""
         try:
-            img = Image.new('RGB', (self.E6_WIDTH, self.E6_HEIGHT), 'white')
+            if orientation == 'landscape':
+                width, height = self.E6_HEIGHT, self.E6_WIDTH
+            else:
+                width, height = self.E6_WIDTH, self.E6_HEIGHT
+            
+            img = Image.new('RGB', (width, height), 'white')
             draw = ImageDraw.Draw(img)
             
             style = notice_data.get('style', {})
@@ -122,7 +131,7 @@ class ImageProcessingService:
             bg_rgb = self.E6_COLORS.get(bg_color, self.E6_COLORS['WHITE'])
             
             if bg_color != 'WHITE':
-                draw.rectangle([(0, 0), (self.E6_WIDTH, self.E6_HEIGHT)], fill=bg_rgb)
+                draw.rectangle([(0, 0), (width, height)], fill=bg_rgb)
             
             try:
                 font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
@@ -135,22 +144,22 @@ class ImageProcessingService:
             y_position = 100
             
             if title:
-                title_lines = self._wrap_text(title, font, self.E6_WIDTH - 100)
+                title_lines = self._wrap_text(title, font, width - 100)
                 for line in title_lines:
                     bbox = draw.textbbox((0, 0), line, font=font)
                     text_width = bbox[2] - bbox[0]
                     
                     if text_align == 'center':
-                        x_position = (self.E6_WIDTH - text_width) // 2
+                        x_position = (width - text_width) // 2
                     elif text_align == 'right':
-                        x_position = self.E6_WIDTH - text_width - 50
+                        x_position = width - text_width - 50
                     else:
                         x_position = 50
                     
                     draw.text((x_position, y_position), line, font=font, fill=text_rgb)
                     y_position += font_size + 10
                 
-                y_position += 30  # Space between title and content
+                y_position += 30
             
             if content:
                 content_font_size = max(font_size - 12, 24)
@@ -159,15 +168,15 @@ class ImageProcessingService:
                 except:
                     content_font = font
                 
-                content_lines = self._wrap_text(content, content_font, self.E6_WIDTH - 100)
+                content_lines = self._wrap_text(content, content_font, width - 100)
                 for line in content_lines:
                     bbox = draw.textbbox((0, 0), line, font=content_font)
                     text_width = bbox[2] - bbox[0]
                     
                     if text_align == 'center':
-                        x_position = (self.E6_WIDTH - text_width) // 2
+                        x_position = (width - text_width) // 2
                     elif text_align == 'right':
-                        x_position = self.E6_WIDTH - text_width - 50
+                        x_position = width - text_width - 50
                     else:
                         x_position = 50
                     
@@ -180,7 +189,7 @@ class ImageProcessingService:
             except:
                 timestamp_font = font
             
-            draw.text((50, self.E6_HEIGHT - 50), f"Updated: {timestamp}", 
+            draw.text((50, height - 50), f"Updated: {timestamp}", 
                      font=timestamp_font, fill=text_rgb)
             
             optimized_img = self._optimize_for_eink(img)

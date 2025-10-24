@@ -14,6 +14,7 @@ interface ImagePreviewDialogProps {
   onApprove: () => void;
   onReject: () => void;
   loading?: boolean;
+  orientation?: 'portrait' | 'landscape';
 }
 
 export const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = ({
@@ -22,9 +23,13 @@ export const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = ({
   previewData,
   onApprove,
   onReject,
-  loading = false
+  loading = false,
+  orientation = 'portrait'
 }) => {
   if (!previewData) return null;
+
+  const aspectRatio = orientation === 'landscape' ? '4/3' : '3/4';
+  const resolution = orientation === 'landscape' ? '1600 × 1200 pixels' : '1200 × 1600 pixels';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -32,10 +37,10 @@ export const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CheckCircle className="w-5 h-5 text-green-600" />
-            E-ink Display Preview
+            E-ink Display Preview ({orientation === 'landscape' ? 'Landscape' : 'Portrait'})
           </DialogTitle>
           <DialogDescription>
-            Preview how your image will appear on the Waveshare 13.3" E6 display (1200x1600, 6-color)
+            Preview how your image will appear on the Waveshare 13.3" E6 display ({resolution}, 6-color)
           </DialogDescription>
         </DialogHeader>
         
@@ -45,7 +50,7 @@ export const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = ({
               src={previewData.preview_image}
               alt="E6 Display Preview"
               className="max-w-full max-h-96 border-2 border-gray-300 rounded shadow-lg"
-              style={{ aspectRatio: '3/4' }}
+              style={{ aspectRatio }}
             />
           </div>
           
@@ -56,9 +61,10 @@ export const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = ({
                 <span className="font-medium">Display Information</span>
               </div>
               <div className="pl-6 space-y-1">
-                <div>Resolution: 1200 × 1600 pixels</div>
+                <div>Resolution: {resolution}</div>
                 <div>Colors: 6-color E-ink Spectra</div>
                 <div>Refresh Time: ~19 seconds</div>
+                <div>Orientation: {orientation === 'landscape' ? 'Landscape' : 'Portrait'}</div>
               </div>
             </div>
             
