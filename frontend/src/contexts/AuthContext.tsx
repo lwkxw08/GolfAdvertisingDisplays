@@ -27,17 +27,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      apiClient.setToken(token);
-    }
-    setIsLoading(false);
+    const initAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        apiClient.setToken(token);
+        try {
+          const userData = JSON.parse(localStorage.getItem('user') || 'null');
+          if (userData) {
+            setUser(userData);
+          }
+        } catch (error) {
+          console.error('Failed to restore user session:', error);
+          apiClient.clearToken();
+          localStorage.removeItem('user');
+        }
+      }
+      setIsLoading(false);
+    };
+    initAuth();
   }, []);
 
   const login = async (email: string, password: string) => {
     try {
       const response = await apiClient.login(email, password);
       setUser(response.user);
+      localStorage.setItem('user', JSON.stringify(response.user));
     } catch (error) {
       throw error;
     }
@@ -45,6 +59,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = () => {
     apiClient.clearToken();
+    localStorage.removeItem('user');
     setUser(null);
   };
 
