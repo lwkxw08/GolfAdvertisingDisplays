@@ -30,6 +30,9 @@ const AdminDashboard = () => {
     device_id: '',
     start_date: '',
     end_date: '',
+    start_time: '',
+    end_time: '',
+    days_of_week: [] as string[],
     creative_file: null as File | null
   });
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
@@ -117,6 +120,9 @@ const AdminDashboard = () => {
         device_id: newCampaign.device_id,
         start_date: newCampaign.start_date,
         end_date: newCampaign.end_date,
+        start_time: newCampaign.start_time,
+        end_time: newCampaign.end_time,
+        days_of_week: newCampaign.days_of_week,
         creative_file: newCampaign.creative_file
       });
       setPreviewDialogOpen(true);
@@ -139,6 +145,15 @@ const AdminDashboard = () => {
       formData.append('device_id', pendingCampaignData.device_id);
       formData.append('start_date', pendingCampaignData.start_date);
       formData.append('end_date', pendingCampaignData.end_date);
+      if (pendingCampaignData.start_time) {
+        formData.append('start_time', pendingCampaignData.start_time);
+      }
+      if (pendingCampaignData.end_time) {
+        formData.append('end_time', pendingCampaignData.end_time);
+      }
+      if (pendingCampaignData.days_of_week && pendingCampaignData.days_of_week.length > 0) {
+        formData.append('days_of_week', JSON.stringify(pendingCampaignData.days_of_week));
+      }
       formData.append('creative_file', pendingCampaignData.creative_file);
       
       await apiClient.createCampaign(formData);
@@ -148,6 +163,9 @@ const AdminDashboard = () => {
         device_id: '',
         start_date: '',
         end_date: '',
+        start_time: '',
+        end_time: '',
+        days_of_week: [],
         creative_file: null
       });
       setPreviewDialogOpen(false);
@@ -545,6 +563,54 @@ const AdminDashboard = () => {
                       onChange={(e) => setNewCampaign({ ...newCampaign, end_date: e.target.value })}
                       required
                     />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm text-gray-600 mb-1 block">Start Time (Optional)</label>
+                      <Input
+                        type="time"
+                        placeholder="Start Time"
+                        value={newCampaign.start_time}
+                        onChange={(e) => setNewCampaign({ ...newCampaign, start_time: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-gray-600 mb-1 block">End Time (Optional)</label>
+                      <Input
+                        type="time"
+                        placeholder="End Time"
+                        value={newCampaign.end_time}
+                        onChange={(e) => setNewCampaign({ ...newCampaign, end_time: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600 mb-2 block">Days of Week (Optional - leave empty for all days)</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
+                        <label key={day} className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={newCampaign.days_of_week.includes(day.toLowerCase())}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setNewCampaign({ 
+                                  ...newCampaign, 
+                                  days_of_week: [...newCampaign.days_of_week, day.toLowerCase()] 
+                                });
+                              } else {
+                                setNewCampaign({ 
+                                  ...newCampaign, 
+                                  days_of_week: newCampaign.days_of_week.filter(d => d !== day.toLowerCase()) 
+                                });
+                              }
+                            }}
+                            className="rounded"
+                          />
+                          <span className="text-sm">{day.slice(0, 3)}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                   <Input
                     type="file"
