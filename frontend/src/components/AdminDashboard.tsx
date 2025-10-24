@@ -4,10 +4,11 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Plus, Building, Monitor, Megaphone, BarChart3, LogOut, Bell, Settings, Shield, Trash2, Info } from 'lucide-react';
+import { Plus, Building, Monitor, Megaphone, BarChart3, LogOut, Bell, Settings, Shield, Trash2, Info, Activity } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { ImagePreviewDialog } from './ImagePreviewDialog';
 import { PiImagerConfigDialog } from './PiImagerConfigDialog';
+import DeviceMonitoringDashboard from './DeviceMonitoringDashboard';
 import { apiClient, Course, Device, SponsorCampaign, Notice } from '../lib/api';
 import { Textarea } from './ui/textarea';
 import { Edit, Clock } from 'lucide-react';
@@ -327,12 +328,13 @@ const AdminDashboard = () => {
         )}
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8">
+          <TabsList className="grid w-full grid-cols-9">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="courses">Courses</TabsTrigger>
             <TabsTrigger value="devices">Devices</TabsTrigger>
             <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
             <TabsTrigger value="notices">Notices</TabsTrigger>
+            <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="audit-logs">Audit Logs</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -786,6 +788,10 @@ const AdminDashboard = () => {
                   ))
               )}
             </div>
+          </TabsContent>
+
+          <TabsContent value="monitoring" className="space-y-6">
+            <DeviceMonitoringDashboard />
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">

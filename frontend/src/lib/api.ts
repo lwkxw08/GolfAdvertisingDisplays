@@ -599,6 +599,48 @@ class ApiClient {
 
     return response.json();
   }
+
+  async getMonitoringDashboard(): Promise<any> {
+    return this.request('/api/devices/monitoring/dashboard');
+  }
+
+  async listAlerts(params?: { device_id?: number; is_resolved?: boolean; severity?: string; limit?: number }): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.device_id) queryParams.append('device_id', params.device_id.toString());
+    if (params?.is_resolved !== undefined) queryParams.append('is_resolved', params.is_resolved.toString());
+    if (params?.severity) queryParams.append('severity', params.severity);
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    
+    const query = queryParams.toString();
+    return this.request(`/api/alerts${query ? `?${query}` : ''}`);
+  }
+
+  async resolveAlert(alertId: number, data: { resolution_note?: string }): Promise<any> {
+    return this.request(`/api/alerts/${alertId}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async issueRemoteCommand(deviceId: number, command: { command_type: string; command_data?: any }): Promise<any> {
+    return this.request(`/api/devices/${deviceId}/commands`, {
+      method: 'POST',
+      body: JSON.stringify(command),
+    });
+  }
+
+  async getDeviceHealthHistory(deviceId: number, hours: number = 24): Promise<any[]> {
+    return this.request(`/api/devices/${deviceId}/health/history?hours=${hours}`);
+  }
+
+  async getDeviceCommands(deviceId: number, status?: string): Promise<any[]> {
+    const query = status ? `?status=${status}` : '';
+    return this.request(`/api/devices/${deviceId}/commands${query}`);
+  }
+
+  async getAlertStatistics(days: number = 7): Promise<any> {
+    return this.request(`/api/alerts/statistics?days=${days}`);
+  }
 }
 
 export const apiClient = new ApiClient();
