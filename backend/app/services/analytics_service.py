@@ -756,6 +756,7 @@ class AnalyticsService:
         revenue_result = revenue_query.first()
         total_revenue = float(revenue_result.total_revenue or 0)
         platform_revenue = float(revenue_result.platform_revenue or 0)
+        course_revenue = total_revenue - platform_revenue
         
         top_campaigns_query = db.query(
             CampaignAnalytics.campaign_id,
@@ -796,6 +797,14 @@ class AnalyticsService:
             for row in top_campaigns_results
         ]
         
+        recent_reports_query = db.query(SavedReport).order_by(SavedReport.created_at.desc()).limit(5)
+        if course_id:
+            recent_reports_query = recent_reports_query.join(
+                db.query(Device.course_id).filter(Device.course_id == course_id).subquery()
+            )
+        
+        recent_reports = recent_reports_query.all()
+        
         return AnalyticsDashboard(
             total_campaigns=total_campaigns,
             active_campaigns=active_campaigns,
@@ -805,7 +814,9 @@ class AnalyticsService:
             total_uptime_percentage=round(total_uptime_percentage, 2),
             total_revenue=total_revenue,
             platform_revenue=platform_revenue,
-            top_performing_campaigns=top_performing_campaigns
+            course_revenue=course_revenue,
+            top_performing_campaigns=top_performing_campaigns,
+            recent_reports=recent_reports
         )
 
 analytics_service = AnalyticsService()
