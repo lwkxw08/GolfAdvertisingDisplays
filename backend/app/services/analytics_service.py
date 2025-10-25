@@ -688,5 +688,124 @@ class AnalyticsService:
         
         output.seek(0)
         return output
+    
+    async def get_analytics_dashboard(
+        self,
+        db: Session,
+        course_id: Optional[int] = None,
+        region_id: Optional[int] = None
+    ) -> AnalyticsDashboard:
+        """Get analytics dashboard summary data"""
+        
+        end_date = date.today()
+        start_date = end_date - timedelta(days=30)
+        
+        campaigns_query = db.query(SponsorCampaign)
+        if course_id:
+            campaigns_query = campaigns_query.join(Device).filter(Device.course_id == course_id)
+        
+        total_campaigns = campaigns_query.count()
+        active_campaigns = campaigns_query.filter(
+            SponsorCampaign.start_date <= end_date,
+            SponsorCampaign.end_date >= start_date
+        ).count()
+        
+        # Total impressions from campaign analytics
+        impressions_query = db.query(func.sum(CampaignAnalytics.impressions)).filter(
+            CampaignAnalytics.date >= start_date,
+            CampaignAnalytics.date <= end_date
+        )
+        if course_id:
+            impressions_query = impressions_query.join(Device).filter(Device.course_id == course_id)
+        
+        total_impressions = impressions_query.scalar() or 0
+        
+        devices_query = db.query(Device)
+        if course_id:
+            devices_query = devices_query.filter(Device.course_id == course_id)
+        
+        total_devices = devices_query.count()
+        online_devices = devices_query.filter(Device.is_online == True).count()
+        
+        uptime_query = db.query(
+            func.sum(DeviceUptimeLog.uptime_minutes).label('total_uptime'),
+            func.sum(DeviceUptimeLog.downtime_minutes).label('total_downtime')
+        ).filter(
+            DeviceUptimeLog.date >= start_date,
+            DeviceUptimeLog.date <= end_date
+        )
+        if course_id:
+            uptime_query = uptime_query.join(Device).filter(Device.course_id == course_id)
+        
+        uptime_result = uptime_query.first()
+        total_uptime = uptime_result.total_uptime or 0
+        total_downtime = uptime_result.total_downtime or 0
+        total_minutes = total_uptime + total_downtime
+        total_uptime_percentage = (total_uptime / total_minutes * 100) if total_minutes > 0 else 0
+        
+        revenue_query = db.query(
+            func.sum(RevenueAnalytics.total_sponsorship_revenue).label('total_revenue'),
+            func.sum(RevenueAnalytics.platform_revenue_share).label('platform_revenue')
+        ).filter(
+            RevenueAnalytics.period_start >= start_date,
+            RevenueAnalytics.period_end <= end_date
+        )
+        if course_id:
+            revenue_query = revenue_query.filter(RevenueAnalytics.course_id == course_id)
+        
+        revenue_result = revenue_query.first()
+        total_revenue = float(revenue_result.total_revenue or 0)
+        platform_revenue = float(revenue_result.platform_revenue or 0)
+        
+        top_campaigns_query = db.query(
+            CampaignAnalytics.campaign_id,
+            SponsorCampaign.sponsor_name.label('campaign_name'),
+            Device.name.label('device_name'),
+            func.sum(CampaignAnalytics.impressions).label('total_impressions'),
+            func.sum(CampaignAnalytics.rotation_count).label('total_rotations'),
+            (func.sum(CampaignAnalytics.impressions) / 30.0).label('avg_impressions_per_day')
+        ).join(
+            SponsorCampaign, CampaignAnalytics.campaign_id == SponsorCampaign.id
+        ).join(
+            Device, CampaignAnalytics.device_id == Device.id
+        ).filter(
+            CampaignAnalytics.date >= start_date,
+            CampaignAnalytics.date <= end_date
+        )
+        
+        if course_id:
+            top_campaigns_query = top_campaigns_query.filter(Device.course_id == course_id)
+        
+        top_campaigns_query = top_campaigns_query.group_by(
+            CampaignAnalytics.campaign_id,
+            SponsorCampaign.sponsor_name,
+            Device.name
+        ).order_by(func.sum(CampaignAnalytics.impressions).desc()).limit(10)
+        
+        top_campaigns_results = top_campaigns_query.all()
+        
+        top_performing_campaigns = [
+            {
+                "campaign_id": row.campaign_id,
+                "campaign_name": row.campaign_name,
+                "device_name": row.device_name,
+                "total_impressions": row.total_impressions or 0,
+                "total_rotations": row.total_rotations or 0,
+                "avg_impressions_per_day": round(float(row.avg_impressions_per_day or 0), 2)
+            }
+            for row in top_campaigns_results
+        ]
+        
+        return AnalyticsDashboard(
+            total_campaigns=total_campaigns,
+            active_campaigns=active_campaigns,
+            total_impressions=int(total_impressions),
+            total_devices=total_devices,
+            online_devices=online_devices,
+            total_uptime_percentage=round(total_uptime_percentage, 2),
+            total_revenue=total_revenue,
+            platform_revenue=platform_revenue,
+            top_performing_campaigns=top_performing_campaigns
+        )
 
 analytics_service = AnalyticsService()
