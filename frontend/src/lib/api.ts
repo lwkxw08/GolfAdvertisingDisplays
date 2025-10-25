@@ -641,6 +641,121 @@ class ApiClient {
   async getAlertStatistics(days: number = 7): Promise<any> {
     return this.request(`/api/alerts/statistics?days=${days}`);
   }
+
+  async getCampaignPerformance(params?: {
+    campaign_id?: number;
+    device_id?: number;
+    course_id?: number;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.campaign_id) queryParams.append('campaign_id', params.campaign_id.toString());
+    if (params?.device_id) queryParams.append('device_id', params.device_id.toString());
+    if (params?.course_id) queryParams.append('course_id', params.course_id.toString());
+    if (params?.start_date) queryParams.append('start_date', params.start_date);
+    if (params?.end_date) queryParams.append('end_date', params.end_date);
+    
+    const query = queryParams.toString();
+    return this.request(`/api/analytics/campaign-performance${query ? `?${query}` : ''}`);
+  }
+
+  async getDeviceUptimeReport(params?: {
+    device_id?: number;
+    course_id?: number;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.device_id) queryParams.append('device_id', params.device_id.toString());
+    if (params?.course_id) queryParams.append('course_id', params.course_id.toString());
+    if (params?.start_date) queryParams.append('start_date', params.start_date);
+    if (params?.end_date) queryParams.append('end_date', params.end_date);
+    
+    const query = queryParams.toString();
+    return this.request(`/api/analytics/device-uptime${query ? `?${query}` : ''}`);
+  }
+
+  async getRevenueAnalytics(params?: {
+    course_id?: number;
+    region_id?: number;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.course_id) queryParams.append('course_id', params.course_id.toString());
+    if (params?.region_id) queryParams.append('region_id', params.region_id.toString());
+    if (params?.start_date) queryParams.append('start_date', params.start_date);
+    if (params?.end_date) queryParams.append('end_date', params.end_date);
+    
+    const query = queryParams.toString();
+    return this.request(`/api/analytics/revenue${query ? `?${query}` : ''}`);
+  }
+
+  async getRevenueConfigurations(courseId: number): Promise<any[]> {
+    return this.request(`/api/analytics/revenue-config/${courseId}`);
+  }
+
+  async createRevenueConfiguration(config: any): Promise<any> {
+    return this.request('/api/analytics/revenue-config', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  }
+
+  async updateRevenueConfiguration(configId: number, config: any): Promise<any> {
+    return this.request(`/api/analytics/revenue-config/${configId}`, {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    });
+  }
+
+  async deleteRevenueConfiguration(configId: number): Promise<{message: string}> {
+    return this.request(`/api/analytics/revenue-config/${configId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async calculateRevenue(courseId: number, periodStart: string, periodEnd: string): Promise<any> {
+    return this.request(`/api/analytics/revenue/calculate/${courseId}?period_start=${periodStart}&period_end=${periodEnd}`, {
+      method: 'POST',
+    });
+  }
+
+  async exportReportCSV(exportRequest: {
+    report_type: string;
+    export_format: string;
+    date_range_start?: string;
+    date_range_end?: string;
+    course_ids?: number[];
+    region_ids?: number[];
+  }): Promise<Blob> {
+    const url = `${API_BASE_URL}/api/analytics/export/csv`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(exportRequest),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+
+    return response.blob();
+  }
+
+  async getAnalyticsDashboard(): Promise<any> {
+    return this.request('/api/analytics/dashboard');
+  }
 }
 
 export const apiClient = new ApiClient();

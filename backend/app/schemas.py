@@ -1,6 +1,6 @@
 from pydantic import BaseModel, validator, EmailStr
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, date
 from .database import UserRole, CampaignInterval, SubscriptionStatus, PlanType, DeviceOrientation, AlertType, AlertSeverity, NotificationStatus, CommandStatus
 
 class UserBase(BaseModel):
@@ -466,3 +466,213 @@ class DeviceMonitoringDashboard(BaseModel):
     devices_low_battery: int
     devices_high_temp: int
     device_health_summary: List[DeviceHealthSummary]
+
+
+class CampaignAnalyticsResponse(BaseModel):
+    id: int
+    campaign_id: int
+    device_id: int
+    date: date
+    impressions: int
+    rotation_count: int
+    display_duration_seconds: int
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class CampaignPerformanceReport(BaseModel):
+    campaign_id: int
+    campaign_name: str
+    device_id: int
+    device_name: str
+    total_impressions: int
+    total_rotations: int
+    total_display_time_hours: float
+    avg_impressions_per_day: float
+    date_range_start: date
+    date_range_end: date
+
+class DeviceUptimeLogResponse(BaseModel):
+    id: int
+    device_id: int
+    date: date
+    uptime_minutes: int
+    downtime_minutes: int
+    total_syncs: int
+    error_count: int
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class DeviceUptimeReport(BaseModel):
+    device_id: int
+    device_name: str
+    course_id: int
+    course_name: str
+    total_uptime_minutes: int
+    total_downtime_minutes: int
+    uptime_percentage: float
+    total_syncs: int
+    total_errors: int
+    avg_syncs_per_day: float
+    date_range_start: date
+    date_range_end: date
+
+class RevenueConfigurationBase(BaseModel):
+    course_id: int
+    device_cost_per_month: float
+    sponsorship_revenue_per_month: float
+    course_revenue_split_percentage: float
+    platform_revenue_split_percentage: float
+    notes: Optional[str] = None
+    effective_from: date
+    effective_to: Optional[date] = None
+
+class RevenueConfigurationCreate(RevenueConfigurationBase):
+    pass
+
+class RevenueConfigurationUpdate(BaseModel):
+    device_cost_per_month: Optional[float] = None
+    sponsorship_revenue_per_month: Optional[float] = None
+    course_revenue_split_percentage: Optional[float] = None
+    platform_revenue_split_percentage: Optional[float] = None
+    notes: Optional[str] = None
+    effective_from: Optional[date] = None
+    effective_to: Optional[date] = None
+
+class RevenueConfigurationResponse(RevenueConfigurationBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class RevenueAnalyticsResponse(BaseModel):
+    id: int
+    course_id: int
+    region_id: Optional[int]
+    period_start: date
+    period_end: date
+    total_device_costs: float
+    total_sponsorship_revenue: float
+    course_revenue_share: float
+    platform_revenue_share: float
+    net_revenue: float
+    active_devices_count: int
+    active_campaigns_count: int
+    total_impressions: int
+    notes: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class RevenueReport(BaseModel):
+    course_id: int
+    course_name: str
+    region_id: Optional[int]
+    region_name: Optional[str]
+    period_start: date
+    period_end: date
+    total_device_costs: float
+    total_sponsorship_revenue: float
+    gross_revenue: float
+    course_revenue_share: float
+    platform_revenue_share: float
+    net_revenue: float
+    active_devices_count: int
+    active_campaigns_count: int
+    total_impressions: int
+    revenue_per_device: float
+    revenue_per_impression: float
+
+class RegionalRevenueReport(BaseModel):
+    region_id: int
+    region_name: str
+    total_courses: int
+    total_devices: int
+    total_device_costs: float
+    total_sponsorship_revenue: float
+    total_course_revenue_share: float
+    total_platform_revenue_share: float
+    total_net_revenue: float
+    total_impressions: int
+    period_start: date
+    period_end: date
+
+class SavedReportBase(BaseModel):
+    report_name: str
+    report_type: str  # campaign_performance, device_uptime, revenue_analytics
+    filters: Optional[Dict[str, Any]] = None
+    date_range_start: Optional[date] = None
+    date_range_end: Optional[date] = None
+    course_ids: Optional[List[int]] = None
+    region_ids: Optional[List[int]] = None
+    schedule_frequency: Optional[str] = None  # daily, weekly, monthly
+
+class SavedReportCreate(SavedReportBase):
+    pass
+
+class SavedReportUpdate(BaseModel):
+    report_name: Optional[str] = None
+    filters: Optional[Dict[str, Any]] = None
+    date_range_start: Optional[date] = None
+    date_range_end: Optional[date] = None
+    course_ids: Optional[List[int]] = None
+    region_ids: Optional[List[int]] = None
+    schedule_frequency: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class SavedReportResponse(SavedReportBase):
+    id: int
+    user_id: int
+    last_generated_at: Optional[datetime]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class ReportExportRequest(BaseModel):
+    report_type: str  # campaign_performance, device_uptime, revenue_analytics
+    export_format: str  # csv, pdf
+    filters: Optional[Dict[str, Any]] = None
+    date_range_start: Optional[date] = None
+    date_range_end: Optional[date] = None
+    course_ids: Optional[List[int]] = None
+    region_ids: Optional[List[int]] = None
+
+class ReportExportResponse(BaseModel):
+    id: int
+    user_id: int
+    saved_report_id: Optional[int]
+    report_type: str
+    export_format: str
+    file_path: Optional[str]
+    file_size_bytes: Optional[int]
+    download_url: Optional[str]
+    filters: Optional[Dict[str, Any]]
+    generated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class AnalyticsDashboard(BaseModel):
+    total_campaigns: int
+    active_campaigns: int
+    total_impressions: int
+    total_devices: int
+    online_devices: int
+    total_uptime_percentage: float
+    total_revenue: float
+    platform_revenue: float
+    course_revenue: float
+    top_performing_campaigns: List[CampaignPerformanceReport]
+    recent_reports: List[SavedReportResponse]

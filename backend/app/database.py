@@ -476,6 +476,145 @@ class DeviceRemoteCommand(Base):
         Index('idx_device_commands_status', 'status'),
     )
 
+class CampaignAnalytics(Base):
+    __tablename__ = "campaign_analytics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_id = Column(Integer, ForeignKey("sponsor_campaigns.id"), nullable=False)
+    device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    impressions = Column(Integer, default=0)
+    rotation_count = Column(Integer, default=0)
+    display_duration_seconds = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    campaign = relationship("SponsorCampaign")
+    device = relationship("Device")
+    
+    __table_args__ = (
+        Index('idx_campaign_analytics_campaign', 'campaign_id'),
+        Index('idx_campaign_analytics_device', 'device_id'),
+        Index('idx_campaign_analytics_date', 'date'),
+    )
+
+class DeviceUptimeLog(Base):
+    __tablename__ = "device_uptime_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    uptime_minutes = Column(Integer, default=0)
+    downtime_minutes = Column(Integer, default=0)
+    total_syncs = Column(Integer, default=0)
+    error_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    device = relationship("Device")
+    
+    __table_args__ = (
+        Index('idx_device_uptime_device', 'device_id'),
+        Index('idx_device_uptime_date', 'date'),
+    )
+
+class RevenueConfiguration(Base):
+    __tablename__ = "revenue_configurations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    device_cost_per_month = Column(Float, default=0.0)
+    sponsorship_revenue_per_month = Column(Float, default=0.0)
+    course_revenue_split_percentage = Column(Float, default=50.0)
+    platform_revenue_split_percentage = Column(Float, default=50.0)
+    notes = Column(Text, nullable=True)
+    effective_from = Column(Date, nullable=False)
+    effective_to = Column(Date, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    course = relationship("Course")
+    
+    __table_args__ = (
+        Index('idx_revenue_config_course', 'course_id'),
+        Index('idx_revenue_config_dates', 'effective_from', 'effective_to'),
+    )
+
+class RevenueAnalytics(Base):
+    __tablename__ = "revenue_analytics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    region_id = Column(Integer, ForeignKey("regions.id"), nullable=True)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    total_device_costs = Column(Float, default=0.0)
+    total_sponsorship_revenue = Column(Float, default=0.0)
+    course_revenue_share = Column(Float, default=0.0)
+    platform_revenue_share = Column(Float, default=0.0)
+    net_revenue = Column(Float, default=0.0)
+    active_devices_count = Column(Integer, default=0)
+    active_campaigns_count = Column(Integer, default=0)
+    total_impressions = Column(Integer, default=0)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    course = relationship("Course")
+    region = relationship("Region")
+    
+    __table_args__ = (
+        Index('idx_revenue_analytics_course', 'course_id'),
+        Index('idx_revenue_analytics_region', 'region_id'),
+        Index('idx_revenue_analytics_period', 'period_start', 'period_end'),
+    )
+
+class SavedReport(Base):
+    __tablename__ = "saved_reports"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    report_name = Column(String(200), nullable=False)
+    report_type = Column(String(50), nullable=False)
+    filters = Column(JSON, nullable=True)
+    date_range_start = Column(Date, nullable=True)
+    date_range_end = Column(Date, nullable=True)
+    course_ids = Column(JSON, nullable=True)
+    region_ids = Column(JSON, nullable=True)
+    schedule_frequency = Column(String(20), nullable=True)
+    last_generated_at = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    user = relationship("User")
+    
+    __table_args__ = (
+        Index('idx_saved_reports_user', 'user_id'),
+        Index('idx_saved_reports_type', 'report_type'),
+    )
+
+class ReportExport(Base):
+    __tablename__ = "report_exports"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    saved_report_id = Column(Integer, ForeignKey("saved_reports.id"), nullable=True)
+    report_type = Column(String(50), nullable=False)
+    export_format = Column(String(10), nullable=False)
+    file_path = Column(String(500), nullable=True)
+    file_size_bytes = Column(Integer, nullable=True)
+    filters = Column(JSON, nullable=True)
+    generated_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    user = relationship("User")
+    saved_report = relationship("SavedReport")
+    
+    __table_args__ = (
+        Index('idx_report_exports_user', 'user_id'),
+        Index('idx_report_exports_generated', 'generated_at'),
+    )
+
 def get_db():
     db = SessionLocal()
     try:

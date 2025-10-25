@@ -55,6 +55,7 @@ from .middleware.rate_limiting import RateLimitMiddleware
 from .middleware.audit_logging import AuditLoggingMiddleware
 from .monitoring import router as monitoring_router
 from .routers.device_monitoring import router as device_monitoring_router
+from .routers.analytics import router as analytics_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -68,6 +69,7 @@ app = FastAPI(
 
 app.include_router(monitoring_router, prefix="", tags=["monitoring"])
 app.include_router(device_monitoring_router, prefix="", tags=["device-monitoring"])
+app.include_router(analytics_router, prefix="", tags=["analytics"])
 
 # Disable CORS. Do not remove this for full-stack development.
 app.add_middleware(

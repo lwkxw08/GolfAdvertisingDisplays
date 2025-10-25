@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ImagePreviewDialog } from './ImagePreviewDialog';
 import { PiImagerConfigDialog } from './PiImagerConfigDialog';
 import DeviceMonitoringDashboard from './DeviceMonitoringDashboard';
+import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { apiClient, Course, Device, SponsorCampaign, Notice } from '../lib/api';
 import { Textarea } from './ui/textarea';
 import { Edit, Clock } from 'lucide-react';
@@ -803,43 +804,7 @@ const AdminDashboard = () => {
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold">Analytics & Reports</h2>
-              
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-xl font-semibold mb-4">System Alerts</h3>
-                <div className="flex gap-4">
-                  <Button 
-                    onClick={async () => {
-                      try {
-                        await apiClient.testAlert('device_offline');
-                        setError('');
-                        alert('Test alert sent successfully!');
-                      } catch (err) {
-                        setError('Failed to send test alert');
-                      }
-                    }}
-                    variant="outline"
-                  >
-                    Test Device Alert
-                  </Button>
-                  <Button 
-                    onClick={async () => {
-                      try {
-                        await apiClient.testAlert('system_health');
-                        setError('');
-                        alert('System health alert sent!');
-                      } catch (err) {
-                        setError('Failed to send system alert');
-                      }
-                    }}
-                    variant="outline"
-                  >
-                    Test System Alert
-                  </Button>
-                </div>
-              </div>
-            </div>
+            <AnalyticsDashboard />
           </TabsContent>
 
           <TabsContent value="audit-logs">
