@@ -756,6 +756,67 @@ class ApiClient {
   async getAnalyticsDashboard(): Promise<any> {
     return this.request('/api/analytics/dashboard');
   }
+
+  async createQRCode(qrCodeData: {
+    campaign_id?: number;
+    course_id: number;
+    destination_url: string;
+    title?: string;
+    description?: string;
+  }): Promise<any> {
+    return this.request('/api/qr-codes', {
+      method: 'POST',
+      body: JSON.stringify(qrCodeData),
+    });
+  }
+
+  async getQRCode(qrCodeId: number): Promise<any> {
+    return this.request(`/api/qr-codes/${qrCodeId}`);
+  }
+
+  async getQRCodesByCampaign(campaignId: number): Promise<any[]> {
+    return this.request(`/api/qr-codes/campaign/${campaignId}`);
+  }
+
+  async getQRCodesByCourse(courseId: number): Promise<any[]> {
+    return this.request(`/api/qr-codes/course/${courseId}`);
+  }
+
+  async updateQRCode(qrCodeId: number, qrCodeData: {
+    destination_url?: string;
+    title?: string;
+    description?: string;
+    is_active?: boolean;
+  }): Promise<any> {
+    return this.request(`/api/qr-codes/${qrCodeId}`, {
+      method: 'PUT',
+      body: JSON.stringify(qrCodeData),
+    });
+  }
+
+  async deleteQRCode(qrCodeId: number): Promise<{message: string}> {
+    return this.request(`/api/qr-codes/${qrCodeId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getQRCodePerformance(params?: {
+    qr_code_id?: number;
+    campaign_id?: number;
+    course_id?: number;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.qr_code_id) queryParams.append('qr_code_id', params.qr_code_id.toString());
+    if (params?.campaign_id) queryParams.append('campaign_id', params.campaign_id.toString());
+    if (params?.course_id) queryParams.append('course_id', params.course_id.toString());
+    if (params?.start_date) queryParams.append('start_date', params.start_date);
+    if (params?.end_date) queryParams.append('end_date', params.end_date);
+    
+    const query = queryParams.toString();
+    return this.request(`/api/qr-codes/performance/report${query ? `?${query}` : ''}`);
+  }
 }
 
 export const apiClient = new ApiClient();
