@@ -154,7 +154,7 @@ async def get_qr_code_performance(
     
     return reports
 
-@router.get("/redirect/{qr_code_key}")
+@router.get("/qr/{qr_code_key}")
 async def redirect_qr_code(
     qr_code_key: str,
     request: Request,
