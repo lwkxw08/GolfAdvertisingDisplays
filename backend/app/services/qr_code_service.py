@@ -7,6 +7,7 @@ import io
 import base64
 import secrets
 import hashlib
+import requests
 from user_agents import parse
 
 from ..database import (
@@ -154,6 +155,27 @@ class QRCodeService:
             "operating_system": f"{user_agent.os.family} {user_agent.os.version_string}"
         }
     
+    def get_geolocation(self, ip_address: Optional[str]) -> Dict[str, Optional[str]]:
+        """Get geolocation data from IP address using ipapi.co"""
+        if not ip_address or ip_address in ["127.0.0.1", "localhost", "::1"]:
+            return {"country": None, "city": None}
+        
+        try:
+            response = requests.get(
+                f"https://ipapi.co/{ip_address}/json/",
+                timeout=2
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "country": data.get("country_name"),
+                    "city": data.get("city")
+                }
+        except Exception as e:
+            print(f"Geolocation lookup failed for {ip_address}: {e}")
+        
+        return {"country": None, "city": None}
+    
     async def record_qr_scan(
         self,
         db: Session,
@@ -172,6 +194,8 @@ class QRCodeService:
         if user_agent:
             device_info = self.parse_user_agent(user_agent)
         
+        geo_info = self.get_geolocation(ip_address)
+        
         existing_scan = db.query(QRCodeScan).filter(
             QRCodeScan.qr_code_id == qr_code.id,
             QRCodeScan.session_id == session_id
@@ -186,6 +210,8 @@ class QRCodeService:
             device_type=device_info.get("device_type"),
             browser=device_info.get("browser"),
             operating_system=device_info.get("operating_system"),
+            country=geo_info.get("country"),
+            city=geo_info.get("city"),
             referrer=referrer,
             is_unique_visitor=is_unique,
             session_id=session_id
