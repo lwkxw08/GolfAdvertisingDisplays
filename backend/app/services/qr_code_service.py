@@ -257,6 +257,7 @@ class QRCodeService:
         
         query = db.query(
             QRCodeAnalytics.qr_code_id,
+            QRCode.qr_code_key,
             QRCode.title.label('qr_code_title'),
             QRCode.campaign_id,
             SponsorCampaign.sponsor_name.label('campaign_name'),
@@ -283,6 +284,7 @@ class QRCodeService:
         
         query = query.group_by(
             QRCodeAnalytics.qr_code_id,
+            QRCode.qr_code_key,
             QRCode.title,
             QRCode.campaign_id,
             SponsorCampaign.sponsor_name
@@ -293,9 +295,12 @@ class QRCodeService:
         reports = []
         for row in results:
             total = row.total_scans or 0
-            mobile_pct = (row.mobile_scans / total * 100) if total > 0 else 0
-            desktop_pct = (row.desktop_scans / total * 100) if total > 0 else 0
-            tablet_pct = (row.tablet_scans / total * 100) if total > 0 else 0
+            mobile_scans = row.mobile_scans or 0
+            desktop_scans = row.desktop_scans or 0
+            tablet_scans = row.tablet_scans or 0
+            mobile_pct = (mobile_scans / total * 100) if total > 0 else 0
+            desktop_pct = (desktop_scans / total * 100) if total > 0 else 0
+            tablet_pct = (tablet_scans / total * 100) if total > 0 else 0
             
             top_countries = self._get_top_locations(
                 db, row.qr_code_id, start_date, end_date, 'country'
@@ -309,11 +314,16 @@ class QRCodeService:
             
             reports.append(QRCodePerformanceReport(
                 qr_code_id=row.qr_code_id,
+                qr_code_key=row.qr_code_key,
                 qr_code_title=row.qr_code_title,
                 campaign_id=row.campaign_id,
                 campaign_name=row.campaign_name,
+                date=str(end_date),
                 total_scans=total,
-                unique_scans=row.unique_scans or 0,
+                unique_visitors=row.unique_scans or 0,
+                mobile_scans=mobile_scans,
+                desktop_scans=desktop_scans,
+                tablet_scans=tablet_scans,
                 mobile_percentage=round(mobile_pct, 2),
                 desktop_percentage=round(desktop_pct, 2),
                 tablet_percentage=round(tablet_pct, 2),

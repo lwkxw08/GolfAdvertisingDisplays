@@ -751,11 +751,16 @@ class QRCodeAnalyticsResponse(BaseModel):
 
 class QRCodePerformanceReport(BaseModel):
     qr_code_id: int
+    qr_code_key: str
     qr_code_title: Optional[str]
     campaign_id: Optional[int]
     campaign_name: Optional[str]
+    date: str
     total_scans: int
-    unique_scans: int
+    unique_visitors: int
+    mobile_scans: int
+    desktop_scans: int
+    tablet_scans: int
     mobile_percentage: float
     desktop_percentage: float
     tablet_percentage: float
