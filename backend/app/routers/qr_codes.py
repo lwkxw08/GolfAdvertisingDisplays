@@ -153,37 +153,3 @@ async def get_qr_code_performance(
     )
     
     return reports
-
-@router.get("/qr/{qr_code_key}")
-async def redirect_qr_code(
-    qr_code_key: str,
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """Redirect QR code scan and track analytics"""
-    qr_code = await qr_code_service.get_qr_code_by_key(db, qr_code_key)
-    
-    if not qr_code or not qr_code.is_active:
-        raise HTTPException(status_code=404, detail="QR code not found or inactive")
-    
-    ip_address = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
-    referrer = request.headers.get("referer")
-    
-    session_id = request.cookies.get("session_id")
-    if not session_id:
-        session_id = secrets.token_urlsafe(16)
-    
-    await qr_code_service.record_qr_scan(
-        db=db,
-        qr_code_key=qr_code_key,
-        ip_address=ip_address,
-        user_agent=user_agent,
-        referrer=referrer,
-        session_id=session_id
-    )
-    
-    response = RedirectResponse(url=qr_code.destination_url, status_code=307)
-    response.set_cookie(key="session_id", value=session_id, max_age=86400*30)
-    
-    return response
