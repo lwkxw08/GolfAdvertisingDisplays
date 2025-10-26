@@ -16,7 +16,7 @@ interface QRCode {
   destination_url: string;
   title?: string;
   description?: string;
-  qr_code_image: string;
+  qr_code_image_url: string;
   is_active: boolean;
   created_at: string;
   total_scans?: number;
@@ -137,7 +137,7 @@ export const QRCodeManager: React.FC<QRCodeManagerProps> = ({
 
   const handleDownloadQRCode = (qrCode: QRCode) => {
     const link = document.createElement('a');
-    link.href = qrCode.qr_code_image;
+    link.href = qrCode.qr_code_image_url;
     link.download = `qr-code-${qrCode.qr_code_key}.png`;
     document.body.appendChild(link);
     link.click();
@@ -289,7 +289,7 @@ export const QRCodeManager: React.FC<QRCodeManagerProps> = ({
               <CardContent className="space-y-4">
                 <div className="flex justify-center bg-white p-4 rounded border">
                   <img
-                    src={qrCode.qr_code_image}
+                    src={qrCode.qr_code_image_url}
                     alt={`QR Code for ${qrCode.title || qrCode.destination_url}`}
                     className="w-48 h-48"
                   />
