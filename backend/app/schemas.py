@@ -676,3 +676,91 @@ class AnalyticsDashboard(BaseModel):
     course_revenue: float
     top_performing_campaigns: List[CampaignPerformanceReport]
     recent_reports: List[SavedReportResponse]
+
+class QRCodeCreate(BaseModel):
+    campaign_id: Optional[int] = None
+    course_id: int
+    destination_url: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+class QRCodeUpdate(BaseModel):
+    destination_url: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class QRCodeResponse(BaseModel):
+    id: int
+    campaign_id: Optional[int]
+    course_id: int
+    qr_code_key: str
+    destination_url: str
+    title: Optional[str]
+    description: Optional[str]
+    qr_code_image_url: Optional[str]
+    is_active: bool
+    created_by: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class QRCodeScanCreate(BaseModel):
+    qr_code_key: str
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    referrer: Optional[str] = None
+
+class QRCodeScanResponse(BaseModel):
+    id: int
+    qr_code_id: int
+    scan_timestamp: datetime
+    ip_address: Optional[str]
+    user_agent: Optional[str]
+    device_type: Optional[str]
+    browser: Optional[str]
+    operating_system: Optional[str]
+    country: Optional[str]
+    city: Optional[str]
+    latitude: Optional[float]
+    longitude: Optional[float]
+    referrer: Optional[str]
+    is_unique_visitor: bool
+    session_id: Optional[str]
+    
+    class Config:
+        from_attributes = True
+
+class QRCodeAnalyticsResponse(BaseModel):
+    id: int
+    qr_code_id: int
+    date: date
+    total_scans: int
+    unique_scans: int
+    mobile_scans: int
+    desktop_scans: int
+    tablet_scans: int
+    top_country: Optional[str]
+    top_city: Optional[str]
+    avg_scans_per_hour: float
+    
+    class Config:
+        from_attributes = True
+
+class QRCodePerformanceReport(BaseModel):
+    qr_code_id: int
+    qr_code_title: Optional[str]
+    campaign_id: Optional[int]
+    campaign_name: Optional[str]
+    total_scans: int
+    unique_scans: int
+    mobile_percentage: float
+    desktop_percentage: float
+    tablet_percentage: float
+    top_countries: List[Dict[str, Any]]
+    top_cities: List[Dict[str, Any]]
+    scans_by_date: List[Dict[str, Any]]
+    date_range_start: date
+    date_range_end: date

@@ -615,6 +615,82 @@ class ReportExport(Base):
         Index('idx_report_exports_generated', 'generated_at'),
     )
 
+class QRCode(Base):
+    __tablename__ = "qr_codes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_id = Column(Integer, ForeignKey("sponsor_campaigns.id"), nullable=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    qr_code_key = Column(String(100), unique=True, nullable=False, index=True)
+    destination_url = Column(Text, nullable=False)
+    title = Column(String(200))
+    description = Column(Text)
+    qr_code_image_url = Column(Text)
+    is_active = Column(Boolean, default=True, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    campaign = relationship("SponsorCampaign", backref="qr_codes")
+    course = relationship("Course", backref="qr_codes")
+    creator = relationship("User", foreign_keys=[created_by])
+    scans = relationship("QRCodeScan", back_populates="qr_code", cascade="all, delete-orphan")
+    analytics = relationship("QRCodeAnalytics", back_populates="qr_code", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index('idx_qr_codes_campaign', 'campaign_id'),
+        Index('idx_qr_codes_course', 'course_id'),
+    )
+
+class QRCodeScan(Base):
+    __tablename__ = "qr_code_scans"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    qr_code_id = Column(Integer, ForeignKey("qr_codes.id"), nullable=False)
+    scan_timestamp = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    ip_address = Column(String(45))
+    user_agent = Column(Text)
+    device_type = Column(String(50))
+    browser = Column(String(100))
+    operating_system = Column(String(100))
+    country = Column(String(100))
+    city = Column(String(100))
+    latitude = Column(DECIMAL(10, 8))
+    longitude = Column(DECIMAL(11, 8))
+    referrer = Column(Text)
+    is_unique_visitor = Column(Boolean, default=True, index=True)
+    session_id = Column(String(100), index=True)
+    
+    qr_code = relationship("QRCode", back_populates="scans")
+    
+    __table_args__ = (
+        Index('idx_qr_scans_qr_code', 'qr_code_id'),
+    )
+
+class QRCodeAnalytics(Base):
+    __tablename__ = "qr_code_analytics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    qr_code_id = Column(Integer, ForeignKey("qr_codes.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    total_scans = Column(Integer, default=0)
+    unique_scans = Column(Integer, default=0)
+    mobile_scans = Column(Integer, default=0)
+    desktop_scans = Column(Integer, default=0)
+    tablet_scans = Column(Integer, default=0)
+    top_country = Column(String(100))
+    top_city = Column(String(100))
+    avg_scans_per_hour = Column(DECIMAL(10, 2), default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    qr_code = relationship("QRCode", back_populates="analytics")
+    
+    __table_args__ = (
+        Index('idx_qr_analytics_qr_code', 'qr_code_id'),
+        Index('idx_qr_analytics_date', 'date'),
+    )
+
 def get_db():
     db = SessionLocal()
     try:
