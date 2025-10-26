@@ -10,6 +10,8 @@ import { ImagePreviewDialog } from './ImagePreviewDialog';
 import { PiImagerConfigDialog } from './PiImagerConfigDialog';
 import DeviceMonitoringDashboard from './DeviceMonitoringDashboard';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
+import { QRCodeManager } from './QRCodeManager';
+import { QRCodeAnalytics } from './QRCodeAnalytics';
 import { apiClient, Course, Device, SponsorCampaign, Notice } from '../lib/api';
 import { Textarea } from './ui/textarea';
 import { Edit, Clock } from 'lucide-react';
@@ -337,12 +339,13 @@ const AdminDashboard = () => {
         )}
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-9">
+          <TabsList className="grid w-full grid-cols-10">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="courses">Courses</TabsTrigger>
             <TabsTrigger value="devices">Devices</TabsTrigger>
             <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
             <TabsTrigger value="notices">Notices</TabsTrigger>
+            <TabsTrigger value="qr-codes">QR Codes</TabsTrigger>
             <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="audit-logs">Audit Logs</TabsTrigger>
@@ -797,6 +800,27 @@ const AdminDashboard = () => {
                   ))
               )}
             </div>
+          </TabsContent>
+
+          <TabsContent value="qr-codes" className="space-y-6">
+            <Tabs defaultValue="manager" className="space-y-6">
+              <TabsList>
+                <TabsTrigger value="manager">QR Code Manager</TabsTrigger>
+                <TabsTrigger value="analytics">QR Analytics</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="manager">
+                <QRCodeManager 
+                  courseId={courses.length > 0 ? courses[0].id : undefined}
+                />
+              </TabsContent>
+              
+              <TabsContent value="analytics">
+                <QRCodeAnalytics 
+                  courseId={courses.length > 0 ? courses[0].id : undefined}
+                />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
           <TabsContent value="monitoring" className="space-y-6">
