@@ -311,8 +311,6 @@ const AdminDashboard = () => {
         formData.append('sponsor_name', campaignData.sponsor_name || '');
         formData.append('start_date', campaignData.start_date || '');
         formData.append('end_date', campaignData.end_date || '');
-        if (campaignData.start_time) formData.append('start_time', campaignData.start_time);
-        if (campaignData.end_time) formData.append('end_time', campaignData.end_time);
         if (campaignData.priority) formData.append('priority', campaignData.priority.toString());
         
         await apiClient.updateCampaign(editingCampaign.id, formData);
@@ -1042,24 +1040,6 @@ const AdminDashboard = () => {
                     type="date"
                     value={new Date(editingCampaign.end_date).toISOString().split('T')[0]}
                     onChange={(e) => setEditingCampaign({...editingCampaign, end_date: new Date(e.target.value).toISOString()})}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Start Time (optional)</label>
-                  <Input
-                    type="time"
-                    value={editingCampaign.start_time || ''}
-                    onChange={(e) => setEditingCampaign({...editingCampaign, start_time: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">End Time (optional)</label>
-                  <Input
-                    type="time"
-                    value={editingCampaign.end_time || ''}
-                    onChange={(e) => setEditingCampaign({...editingCampaign, end_time: e.target.value})}
                   />
                 </div>
               </div>
