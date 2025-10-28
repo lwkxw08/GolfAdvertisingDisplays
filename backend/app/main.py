@@ -121,6 +121,30 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 async def healthz():
     return {"status": "ok"}
 
+@app.websocket("/ws/device/{device_id}")
+async def websocket_endpoint(websocket: WebSocket, device_id: str, db: Session = Depends(get_db)):
+    """WebSocket endpoint for real-time device notifications"""
+    from .websocket_manager import websocket_manager
+    from .database import Device
+    
+    device = db.query(Device).filter(Device.device_id == device_id).first()
+    if not device:
+        await websocket.close(code=1008, reason="Device not found")
+        return
+    
+    await websocket_manager.connect(websocket, device_id)
+    websocket_manager.subscribe_to_course(device_id, device.course_id)
+    
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except Exception as e:
+        logger.info(f"WebSocket connection closed for device {device_id}: {e}")
+    finally:
+        websocket_manager.disconnect(device_id)
+
 @app.get("/qr/{qr_code_key}")
 async def redirect_qr_code(
     qr_code_key: str,
