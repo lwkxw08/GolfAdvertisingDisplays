@@ -17,6 +17,8 @@ from PIL import Image
 import psutil
 import threading
 import queue
+import websocket
+import ssl
 
 sys.path.append('/home/pi/e-Paper/RaspberryPi_JetsonNano/python/lib')
 
@@ -350,6 +352,112 @@ class EInkDisplayManager:
             'resolution': f"{self.display_width}x{self.display_height}"
         }
 
+class WebSocketManager:
+    """Manages WebSocket connection for real-time notifications"""
+    
+    def __init__(self, device_id: str, api_base_url: str, refresh_callback):
+        self.device_id = device_id
+        self.api_base_url = api_base_url
+        self.refresh_callback = refresh_callback
+        self.ws = None
+        self.ws_thread = None
+        self.running = False
+        self.reconnect_delay = 5
+        
+    def start(self):
+        """Start WebSocket connection in background thread"""
+        self.running = True
+        self.ws_thread = threading.Thread(target=self._connect_loop)
+        self.ws_thread.daemon = True
+        self.ws_thread.start()
+        logger.info("WebSocket manager started")
+    
+    def stop(self):
+        """Stop WebSocket connection"""
+        self.running = False
+        if self.ws:
+            try:
+                self.ws.close()
+            except:
+                pass
+        if self.ws_thread:
+            self.ws_thread.join(timeout=5)
+        logger.info("WebSocket manager stopped")
+    
+    def _connect_loop(self):
+        """Continuously try to maintain WebSocket connection"""
+        while self.running:
+            try:
+                self._connect()
+            except Exception as e:
+                logger.error(f"WebSocket connection error: {e}")
+            
+            if self.running:
+                logger.info(f"Reconnecting WebSocket in {self.reconnect_delay} seconds...")
+                time.sleep(self.reconnect_delay)
+    
+    def _connect(self):
+        """Connect to WebSocket endpoint"""
+        ws_url = self.api_base_url.replace('http://', 'ws://').replace('https://', 'wss://')
+        ws_url = f"{ws_url}/ws/device/{self.device_id}"
+        
+        logger.info(f"Connecting to WebSocket: {ws_url}")
+        
+        self.ws = websocket.WebSocketApp(
+            ws_url,
+            on_message=self._on_message,
+            on_error=self._on_error,
+            on_close=self._on_close,
+            on_open=self._on_open
+        )
+        
+        if ws_url.startswith('wss://'):
+            self.ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
+        else:
+            self.ws.run_forever()
+    
+    def _on_open(self, ws):
+        """Called when WebSocket connection is established"""
+        logger.info("WebSocket connected")
+        self.reconnect_delay = 5
+        
+        def ping_loop():
+            while self.running and self.ws:
+                try:
+                    self.ws.send("ping")
+                    time.sleep(30)
+                except:
+                    break
+        
+        ping_thread = threading.Thread(target=ping_loop)
+        ping_thread.daemon = True
+        ping_thread.start()
+    
+    def _on_message(self, ws, message):
+        """Called when WebSocket message is received"""
+        try:
+            if message == "pong":
+                return
+            
+            data = json.loads(message)
+            logger.info(f"WebSocket notification received: {data.get('type')}")
+            
+            if data.get('action') == 'refresh_playlist':
+                logger.info(f"Triggering playlist refresh due to {data.get('type')}")
+                self.refresh_callback()
+            
+        except Exception as e:
+            logger.error(f"Error processing WebSocket message: {e}")
+    
+    def _on_error(self, ws, error):
+        """Called when WebSocket error occurs"""
+        logger.error(f"WebSocket error: {error}")
+    
+    def _on_close(self, ws, close_status_code, close_msg):
+        """Called when WebSocket connection is closed"""
+        logger.info(f"WebSocket closed: {close_status_code} - {close_msg}")
+
+
 class EInkDeviceClient:
     """Main device client for E-ink golf tee box displays"""
     
@@ -362,11 +470,17 @@ class EInkDeviceClient:
         self.connectivity = ConnectivityManager()
         self.power = PowerManager()
         self.display = EInkDisplayManager()
+        self.websocket_manager = WebSocketManager(
+            self.device_id,
+            self.api_base_url,
+            self._handle_refresh_request
+        )
         
         self.running = False
         self.last_sync = None
         self.current_playlist = []
         self.sync_errors = 0
+        self.refresh_requested = False
         
         logger.info(f"E-ink device client initialized for device: {self.device_id}")
     
@@ -402,6 +516,7 @@ class EInkDeviceClient:
             return False
         
         self.connectivity.start_monitoring()
+        self.websocket_manager.start()
         
         self.running = True
         try:
@@ -422,8 +537,14 @@ class EInkDeviceClient:
         logger.info("Stopping E-ink device client...")
         self.running = False
         self.connectivity.stop_monitoring()
+        self.websocket_manager.stop()
         self.display.sleep()
         logger.info("Device client stopped")
+    
+    def _handle_refresh_request(self):
+        """Handle refresh request from WebSocket notification"""
+        self.refresh_requested = True
+        logger.info("Refresh request received via WebSocket")
     
     def _main_loop_iteration(self):
         """Single iteration of main loop"""
@@ -444,6 +565,7 @@ class EInkDeviceClient:
             
             self.last_sync = datetime.now()
             self.sync_errors = 0  # Reset error count on successful sync
+            self.refresh_requested = False  # Reset refresh flag
             
         except Exception as e:
             logger.error(f"Error in main loop iteration: {e}")
@@ -599,12 +721,17 @@ class EInkDeviceClient:
             return None
     
     def _sleep_until_next_sync(self):
-        """Sleep until next sync time"""
+        """Sleep until next sync time, but wake up early if refresh is requested"""
         try:
             self.display.sleep()
             
             logger.info(f"Sleeping for {self.sync_interval} seconds until next sync")
-            time.sleep(self.sync_interval)
+            
+            for _ in range(self.sync_interval):
+                if self.refresh_requested:
+                    logger.info("Waking up early due to refresh request")
+                    break
+                time.sleep(1)
             
         except KeyboardInterrupt:
             raise

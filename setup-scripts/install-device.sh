@@ -139,7 +139,7 @@ setup_device_client() {
     print_info "Installing Python dependencies..."
     source venv/bin/activate
     pip install -q --upgrade pip
-    pip install -q requests pillow psutil
+    pip install -q requests pillow psutil websocket-client
     deactivate
     
     print_success "Python environment configured"
