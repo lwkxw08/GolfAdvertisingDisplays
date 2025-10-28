@@ -87,6 +87,18 @@ app.add_middleware(RateLimitMiddleware, redis_url=os.getenv("REDIS_URL"))
 from .middleware.audit_logging import AuditLoggingMiddleware
 app.add_middleware(AuditLoggingMiddleware)
 
+from .scheduler import start_scheduler, shutdown_scheduler
+
+@app.on_event("startup")
+async def startup_event():
+    """Start background scheduler on application startup"""
+    start_scheduler()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop background scheduler on application shutdown"""
+    shutdown_scheduler()
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
