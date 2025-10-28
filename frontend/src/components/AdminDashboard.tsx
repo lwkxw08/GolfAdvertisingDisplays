@@ -60,6 +60,9 @@ const AdminDashboard = () => {
 
   const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
   const [noticeDialogOpen, setNoticeDialogOpen] = useState(false);
+  
+  const [editingCampaign, setEditingCampaign] = useState<SponsorCampaign | null>(null);
+  const [campaignDialogOpen, setCampaignDialogOpen] = useState(false);
 
   const auditLogs = [
     { action: 'Course Created', user: 'admin@golfcms.com', timestamp: '2024-01-15 10:30:00' },
@@ -282,6 +285,45 @@ const AdminDashboard = () => {
     const startTime = new Date(notice.start_time);
     const endTime = new Date(notice.end_time);
     return now >= startTime && now <= endTime && notice.is_active;
+  };
+
+  const handleEditCampaign = (campaign: SponsorCampaign) => {
+    setEditingCampaign(campaign);
+    setCampaignDialogOpen(true);
+  };
+
+  const handleDeleteCampaign = async (campaignId: number) => {
+    if (!confirm('Are you sure you want to delete this campaign?')) return;
+    
+    try {
+      await apiClient.deleteCampaign(campaignId);
+      await loadData();
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete campaign');
+    }
+  };
+
+  const handleSaveCampaign = async (campaignData: Partial<SponsorCampaign>) => {
+    try {
+      if (editingCampaign) {
+        const formData = new FormData();
+        formData.append('sponsor_name', campaignData.sponsor_name || '');
+        formData.append('start_date', campaignData.start_date || '');
+        formData.append('end_date', campaignData.end_date || '');
+        if (campaignData.start_time) formData.append('start_time', campaignData.start_time);
+        if (campaignData.end_time) formData.append('end_time', campaignData.end_time);
+        if (campaignData.priority) formData.append('priority', campaignData.priority.toString());
+        
+        await apiClient.updateCampaign(editingCampaign.id, formData);
+      }
+      setCampaignDialogOpen(false);
+      setEditingCampaign(null);
+      await loadData();
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save campaign');
+    }
   };
 
   useEffect(() => {
@@ -709,6 +751,26 @@ const AdminDashboard = () => {
                         <span className="text-sm text-gray-600">Status:</span>
                         <Badge variant="default">Active</Badge>
                       </div>
+                      <div className="flex gap-2 mt-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditCampaign(campaign)}
+                          className="flex-1"
+                        >
+                          <Edit className="w-4 h-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteCampaign(campaign.id)}
+                          className="flex-1"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -944,6 +1006,80 @@ const AdminDashboard = () => {
               Cancel
             </Button>
             <Button onClick={() => handleSaveNotice(editingNotice!)}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={campaignDialogOpen} onOpenChange={setCampaignDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Campaign</DialogTitle>
+            <DialogDescription>Update campaign details</DialogDescription>
+          </DialogHeader>
+          {editingCampaign && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Sponsor Name</label>
+                <Input
+                  value={editingCampaign.sponsor_name}
+                  onChange={(e) => setEditingCampaign({...editingCampaign, sponsor_name: e.target.value})}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Start Date</label>
+                  <Input
+                    type="date"
+                    value={new Date(editingCampaign.start_date).toISOString().split('T')[0]}
+                    onChange={(e) => setEditingCampaign({...editingCampaign, start_date: new Date(e.target.value).toISOString()})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">End Date</label>
+                  <Input
+                    type="date"
+                    value={new Date(editingCampaign.end_date).toISOString().split('T')[0]}
+                    onChange={(e) => setEditingCampaign({...editingCampaign, end_date: new Date(e.target.value).toISOString()})}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Start Time (optional)</label>
+                  <Input
+                    type="time"
+                    value={editingCampaign.start_time || ''}
+                    onChange={(e) => setEditingCampaign({...editingCampaign, start_time: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">End Time (optional)</label>
+                  <Input
+                    type="time"
+                    value={editingCampaign.end_time || ''}
+                    onChange={(e) => setEditingCampaign({...editingCampaign, end_time: e.target.value})}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Priority</label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={editingCampaign.priority || 50}
+                  onChange={(e) => setEditingCampaign({...editingCampaign, priority: parseInt(e.target.value)})}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCampaignDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => handleSaveCampaign(editingCampaign!)}>
               Save Changes
             </Button>
           </DialogFooter>

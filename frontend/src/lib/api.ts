@@ -233,6 +233,13 @@ class ApiClient {
     return response.json();
   }
 
+  async deleteCampaign(campaignId: number): Promise<void> {
+    const result = await this.request(`/admin/campaigns/${campaignId}`, {
+      method: 'DELETE',
+    });
+    return result;
+  }
+
   async bulkCreateCampaigns(campaignsData: string, creatives: File[]): Promise<SponsorCampaign[]> {
     const url = `${API_BASE_URL}/admin/campaigns/bulk`;
     const headers: Record<string, string> = {};
