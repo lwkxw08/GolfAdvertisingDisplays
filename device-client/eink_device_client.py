@@ -20,20 +20,25 @@ import queue
 import websocket
 import ssl
 
-for path in ['/home/pi/e-Paper/RaspberryPi/python/lib', 
-             '/home/pi/e-Paper/RaspberryPi_JetsonNano/python/lib']:
-    if os.path.exists(path):
-        sys.path.append(path)
-        break
-
 try:
-    import epd13in3E
-    import epdconfig
+    from waveshare_epd import epd13in3E, epdconfig
     EINK_AVAILABLE = True
-    print("Waveshare E-ink library loaded successfully")
-except ImportError as e:
-    print(f"WARNING: Waveshare E-ink library not found: {e}. Running in simulation mode.")
-    EINK_AVAILABLE = False
+    print("Waveshare E-ink library loaded successfully (pip package)")
+except ImportError:
+    for path in ['/home/pi/e-Paper/RaspberryPi/python/lib', 
+                 '/home/pi/e-Paper/RaspberryPi_JetsonNano/python/lib']:
+        if os.path.exists(path):
+            sys.path.append(path)
+            break
+    
+    try:
+        import epd13in3E
+        import epdconfig
+        EINK_AVAILABLE = True
+        print("Waveshare E-ink library loaded successfully (local installation)")
+    except ImportError as e:
+        print(f"WARNING: Waveshare E-ink library not found: {e}. Running in simulation mode.")
+        EINK_AVAILABLE = False
 
 logging.basicConfig(
     level=logging.INFO,

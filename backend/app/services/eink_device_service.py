@@ -137,9 +137,17 @@ class EInkDeviceService:
                 pass
         
         if campaign.start_time and campaign.end_time:
-            if campaign.start_time <= current_time <= campaign.end_time:
+            if campaign.start_time == campaign.end_time:
                 return True
-            return False
+            
+            if campaign.start_time < campaign.end_time:
+                if campaign.start_time <= current_time <= campaign.end_time:
+                    return True
+                return False
+            else:
+                if current_time >= campaign.start_time or current_time <= campaign.end_time:
+                    return True
+                return False
         
         return True
     
