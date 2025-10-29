@@ -513,6 +513,27 @@ async def update_campaign(
     
     return db_campaign
 
+@app.delete("/admin/campaigns/{campaign_id}")
+async def delete_campaign(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    campaign = db.query(SponsorCampaign).filter(SponsorCampaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    if campaign.creative_path:
+        try:
+            storage_service.delete_file(campaign.creative_path)
+        except Exception as e:
+            print(f"Warning: Failed to delete creative file: {e}")
+    
+    db.delete(campaign)
+    db.commit()
+    
+    return {"message": "Campaign deleted successfully"}
+
 @app.post("/admin/campaigns/bulk", response_model=List[SponsorCampaignResponse])
 async def bulk_create_campaigns(
     campaigns_data: str = Form(...),
