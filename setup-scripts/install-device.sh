@@ -2,7 +2,7 @@
 set -e
 
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="2.0.0"
 API_BASE_URL="https://golfadvertisingdisplays.onrender.com"
 REPO_BRANCH="devin/1727000056-supabase-migration"
 DEVICE_CLIENT_URL="https://raw.githubusercontent.com/lwkxw08/GolfAdvertisingDisplays/${REPO_BRANCH}/device-client/eink_device_client.py"
@@ -81,38 +81,52 @@ install_dependencies() {
     fi
 }
 
+enable_spi() {
+    print_info "Enabling SPI interface..."
+    
+    if [ -f /dev/spidev0.0 ]; then
+        print_success "SPI already enabled"
+        return
+    fi
+    
+    print_info "Enabling SPI via raspi-config..."
+    sudo raspi-config nonint do_spi 0
+    
+    if sudo raspi-config nonint get_spi | grep -q "0"; then
+        print_success "SPI enabled (reboot required)"
+    else
+        print_warning "SPI enable may have failed. Please check manually."
+    fi
+}
+
 install_eink_library() {
     print_info "Installing Waveshare E-ink library..."
     
     if [ -d "/home/pi/e-Paper" ]; then
-        print_warning "Waveshare library already exists, skipping..."
-        return
+        print_warning "Waveshare library already exists, skipping clone..."
+    else
+        cd /home/pi
+        
+        print_info "Cloning Waveshare e-Paper repository..."
+        if ! git clone https://github.com/waveshare/e-Paper.git; then
+            print_error "Failed to clone Waveshare repository"
+            exit 1
+        fi
     fi
     
-    cd /home/pi
-    
-    print_info "Cloning Waveshare e-Paper repository..."
-    if ! git clone https://github.com/waveshare/e-Paper.git; then
-        print_error "Failed to clone Waveshare repository"
-        exit 1
-    fi
-    
-    if [ ! -d "e-Paper/RaspberryPi_JetsonNano/python" ]; then
+    if [ ! -d "/home/pi/e-Paper/RaspberryPi_JetsonNano/python" ]; then
         print_error "Waveshare repository structure not as expected"
         print_info "Checking available directories..."
-        ls -la e-Paper/
+        ls -la /home/pi/e-Paper/
         exit 1
     fi
     
-    cd e-Paper/RaspberryPi_JetsonNano/python
-    
-    print_info "Installing Waveshare library..."
-    if ! sudo python3 setup.py install; then
-        print_error "Failed to install Waveshare library"
+    if [ ! -d "/home/pi/e-Paper/E-paper_Separate_Program/13.3inch_e-Paper_E" ]; then
+        print_error "13.3inch E-Paper E driver not found in repository"
         exit 1
     fi
     
-    print_success "Waveshare E-ink library installed"
+    print_success "Waveshare E-ink library repository ready"
 }
 
 setup_device_client() {
@@ -139,10 +153,23 @@ setup_device_client() {
     print_info "Installing Python dependencies..."
     source venv/bin/activate
     pip install -q --upgrade pip
-    pip install -q requests pillow psutil websocket-client
+    pip install -q requests pillow psutil websocket-client spidev RPi.GPIO gpiozero numpy
+    
+    print_info "Installing Waveshare epd drivers in venv..."
+    mkdir -p venv/lib/python*/site-packages/waveshare_epd
+    cp -r /home/pi/e-Paper/RaspberryPi_JetsonNano/python/lib/waveshare_epd/* venv/lib/python*/site-packages/waveshare_epd/
+    
+    cp /home/pi/e-Paper/E-paper_Separate_Program/13.3inch_e-Paper_E/RaspberryPi/python/lib/epd13in3E.py venv/lib/python*/site-packages/waveshare_epd/
+    
+    cp /home/pi/e-Paper/E-paper_Separate_Program/13.3inch_e-Paper_E/RaspberryPi/python/lib/epdconfig.py venv/lib/python*/site-packages/waveshare_epd/
+    
+    cp /home/pi/e-Paper/E-paper_Separate_Program/13.3inch_e-Paper_E/RaspberryPi/python/lib/*.so venv/lib/python*/site-packages/waveshare_epd/
+    
+    sed -i 's/^import epdconfig$/from . import epdconfig/' venv/lib/python*/site-packages/waveshare_epd/epd13in3E.py
+    
     deactivate
     
-    print_success "Python environment configured"
+    print_success "Python environment configured with Waveshare drivers"
 }
 
 create_device_config() {
@@ -234,6 +261,50 @@ test_api_connectivity() {
     fi
 }
 
+verify_installation() {
+    print_info "Verifying installation..."
+    
+    local errors=0
+    
+    if [ ! -d "/home/pi/e-Paper" ]; then
+        print_error "Waveshare repository not found"
+        errors=$((errors + 1))
+    fi
+    
+    if [ ! -d "/home/pi/eink-device/venv" ]; then
+        print_error "Virtual environment not found"
+        errors=$((errors + 1))
+    fi
+    
+    if [ ! -f "/home/pi/eink-device/eink_device_client.py" ]; then
+        print_error "Device client not found"
+        errors=$((errors + 1))
+    fi
+    
+    if [ ! -f "/etc/eink_device/config.json" ]; then
+        print_error "Configuration file not found"
+        errors=$((errors + 1))
+    fi
+    
+    if [ ! -f "/etc/systemd/system/eink-device.service" ]; then
+        print_error "Systemd service not found"
+        errors=$((errors + 1))
+    fi
+    
+    if ! /home/pi/eink-device/venv/bin/python -c "from waveshare_epd import epd13in3E" 2>/dev/null; then
+        print_error "Waveshare epd13in3E driver not properly installed in venv"
+        errors=$((errors + 1))
+    fi
+    
+    if [ $errors -eq 0 ]; then
+        print_success "Installation verification passed"
+        return 0
+    else
+        print_error "Installation verification failed with $errors error(s)"
+        return 1
+    fi
+}
+
 display_completion() {
     local device_id=$1
     
@@ -245,16 +316,20 @@ display_completion() {
     echo "Device ID: $device_id"
     echo "API URL: $API_BASE_URL"
     echo ""
+    echo "IMPORTANT: After reboot, start the service with:"
+    echo "  sudo systemctl start eink-device.service"
+    echo ""
     echo "Useful Commands:"
     echo "  • Check service status:  sudo systemctl status eink-device.service"
-    echo "  • View logs:            sudo journalctl -u eink-device.service -f"
+    echo "  • View logs:            tail -f /var/log/eink_device.log"
     echo "  • Restart service:      sudo systemctl restart eink-device.service"
     echo "  • Stop service:         sudo systemctl stop eink-device.service"
     echo ""
     echo "Configuration file: /etc/eink_device/config.json"
     echo "Device client: /home/pi/eink-device/eink_device_client.py"
     echo ""
-    echo "The device should now appear as 'Online' in the Golf CMS admin dashboard."
+    echo "The device should appear as 'Online' in the Golf CMS admin dashboard"
+    echo "within 1-2 minutes after starting the service."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 }
@@ -276,14 +351,30 @@ main() {
     
     check_internet
     install_dependencies
+    enable_spi
     install_eink_library
     setup_device_client "$DEVICE_ID"
     create_device_config "$DEVICE_ID"
     create_systemd_service
-    start_service
-    test_api_connectivity "$DEVICE_ID"
+    verify_installation
     
     display_completion "$DEVICE_ID"
+    
+    print_warning "SPI interface has been enabled. A reboot is required before starting the service."
+    echo ""
+    read -p "Reboot now? (y/n) " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Rebooting in 5 seconds..."
+        print_info "After reboot, run: sudo systemctl start eink-device.service"
+        sleep 5
+        sudo reboot
+    else
+        print_warning "Please reboot manually before starting the service:"
+        print_info "  sudo reboot"
+        print_info "After reboot, start the service with:"
+        print_info "  sudo systemctl start eink-device.service"
+    fi
 }
 
 main "$@"

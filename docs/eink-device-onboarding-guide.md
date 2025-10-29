@@ -63,39 +63,75 @@ This guide provides step-by-step instructions for onboarding new E-ink devices t
 ## Phase 2: Software Installation
 
 ### 2.1 Waveshare E-ink Library Setup
+
+**IMPORTANT**: The 13.3" E6 display driver (epd13in3E) is located in a separate program folder, not in the main waveshare_epd package. The installation script handles this automatically, but for manual setup:
+
 1. **Download Waveshare Libraries**
    ```bash
    cd /home/pi
    git clone https://github.com/waveshare/e-Paper.git
-   cd e-Paper/RaspberryPi/python
-   sudo python3 setup.py install
    ```
 
-2. **Test Display Functionality**
+2. **Enable SPI Interface**
    ```bash
-   cd examples
-   python3 epd_13in3E_test.py
-   # Verify display shows test pattern
+   sudo raspi-config
+   # Navigate to: Interface Options -> SPI -> Enable
+   # Or use: sudo raspi-config nonint do_spi 0
+   sudo reboot
+   ```
+
+3. **Verify SPI is Enabled**
+   ```bash
+   ls /dev/spidev*
+   # Should show: /dev/spidev0.0  /dev/spidev0.1
    ```
 
 ### 2.2 Device Client Installation
+
+**IMPORTANT**: The device client uses a virtual environment, and all Waveshare drivers must be installed in that venv, not system-wide.
+
 1. **Download Device Client**
    ```bash
    cd /home/pi
    mkdir eink-device
    cd eink-device
-   # Copy eink_device_client.py from repository
    wget https://raw.githubusercontent.com/lwkxw08/GolfAdvertisingDisplays/devin/1727000056-supabase-migration/device-client/eink_device_client.py
    ```
 
-2. **Install Python Dependencies**
+2. **Create Virtual Environment and Install Dependencies**
    ```bash
    python3 -m venv venv
    source venv/bin/activate
-   pip install requests pillow psutil
+   pip install requests pillow psutil websocket-client spidev RPi.GPIO gpiozero numpy
    ```
 
-3. **Create System Service**
+3. **Install Waveshare Drivers in Virtual Environment**
+   ```bash
+   # Copy waveshare_epd package from main repo
+   mkdir -p venv/lib/python*/site-packages/waveshare_epd
+   cp -r /home/pi/e-Paper/RaspberryPi_JetsonNano/python/lib/waveshare_epd/* venv/lib/python*/site-packages/waveshare_epd/
+   
+   # Copy epd13in3E driver from separate program folder
+   cp /home/pi/e-Paper/E-paper_Separate_Program/13.3inch_e-Paper_E/RaspberryPi/python/lib/epd13in3E.py venv/lib/python*/site-packages/waveshare_epd/
+   
+   # Copy epdconfig from separate program folder (compatible with epd13in3E)
+   cp /home/pi/e-Paper/E-paper_Separate_Program/13.3inch_e-Paper_E/RaspberryPi/python/lib/epdconfig.py venv/lib/python*/site-packages/waveshare_epd/
+   
+   # Copy .so library files for hardware communication
+   cp /home/pi/e-Paper/E-paper_Separate_Program/13.3inch_e-Paper_E/RaspberryPi/python/lib/*.so venv/lib/python*/site-packages/waveshare_epd/
+   
+   # Fix import in epd13in3E.py to use relative import
+   sed -i 's/^import epdconfig$/from . import epdconfig/' venv/lib/python*/site-packages/waveshare_epd/epd13in3E.py
+   
+   deactivate
+   ```
+
+4. **Verify Installation**
+   ```bash
+   /home/pi/eink-device/venv/bin/python -c "from waveshare_epd import epd13in3E; print('epd13in3E driver loaded successfully')"
+   ```
+
+5. **Create System Service**
    ```bash
    sudo nano /etc/systemd/system/eink-device.service
    ```
@@ -103,8 +139,9 @@ This guide provides step-by-step instructions for onboarding new E-ink devices t
    Service file content:
    ```ini
    [Unit]
-   Description=E-ink Device Client
+   Description=E-ink Device Client for Golf CMS
    After=network.target
+   Wants=network-online.target
    
    [Service]
    Type=simple
@@ -113,9 +150,18 @@ This guide provides step-by-step instructions for onboarding new E-ink devices t
    ExecStart=/home/pi/eink-device/venv/bin/python eink_device_client.py
    Restart=always
    RestartSec=10
+   StandardOutput=journal
+   StandardError=journal
    
    [Install]
    WantedBy=multi-user.target
+   ```
+
+6. **Create Log File**
+   ```bash
+   sudo touch /var/log/eink_device.log
+   sudo chown pi:pi /var/log/eink_device.log
+   sudo chmod 644 /var/log/eink_device.log
    ```
 
 ---
@@ -325,7 +371,10 @@ curl "https://golfadvertisingdisplays.onrender.com/api/eink/connectivity-options
 
 ### 8.2 Log Analysis
 ```bash
-# Device client logs
+# Device client logs (real-time)
+tail -f /var/log/eink_device.log
+
+# Device client logs (last 100 lines)
 tail -100 /var/log/eink_device.log
 
 # System logs
@@ -334,6 +383,40 @@ sudo journalctl -u eink-device.service --since "1 hour ago"
 # Network connectivity
 sudo journalctl -u NetworkManager --since "1 hour ago"
 ```
+
+### 8.4 Key Success Indicators in Logs
+
+When the device is working correctly, you should see these log messages:
+
+```
+E-ink display initialized successfully
+Websocket connected
+Displaying image: /tmp/campaign_*.png
+Image displayed successfully in X seconds
+Display put to sleep
+```
+
+**Common Error Messages and Solutions:**
+
+1. **"Running in simulation mode (no E-ink hardware)"**
+   - Cause: Waveshare library not installed in venv
+   - Solution: Follow section 2.2 step 3 to install drivers in venv
+
+2. **"Failed to initialize display: 'EPD' object has no attribute 'init'"**
+   - Cause: Wrong API method name (should be uppercase Init)
+   - Solution: Update device client code (fixed in v2.0.0+)
+
+3. **"Failed to initialize display: 'NoneType' object has no attribute 'DEV_ModuleInit'"**
+   - Cause: Missing .so library files or wrong epdconfig version
+   - Solution: Copy .so files from E driver folder to venv (see section 2.2 step 3)
+
+4. **"No content items in playlist"**
+   - Cause: No active campaigns assigned to device, or campaigns filtered by time window
+   - Solution: Check campaign assignment and time windows in admin dashboard
+
+5. **"ls: cannot access '/dev/spidev*': No such file or directory"**
+   - Cause: SPI interface not enabled
+   - Solution: Enable SPI via raspi-config and reboot (see section 2.1 step 2)
 
 ### 8.3 Remote Diagnostics
 The CMS provides remote diagnostic capabilities:
