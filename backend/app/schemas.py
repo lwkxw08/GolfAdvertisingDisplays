@@ -412,7 +412,6 @@ class AlertNotificationResponse(BaseModel):
         from_attributes = True
 
 class DeviceRemoteCommandCreate(BaseModel):
-    device_id: int
     command_type: str  # reboot, refresh_display, update_firmware, get_logs, clear_cache, test_display
     command_data: Optional[Dict[str, Any]] = None
 
