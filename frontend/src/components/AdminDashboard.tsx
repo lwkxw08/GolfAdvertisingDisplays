@@ -42,7 +42,8 @@ const AdminDashboard = () => {
     days_of_week: [] as string[],
     rotation_interval: '1',
     rotation_unit: 'hours',
-    creative_file: null as File | null
+    creative_file: null as File | null,
+    priority: 50
   });
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [previewData, setPreviewData] = useState<any>(null);
@@ -142,7 +143,8 @@ const AdminDashboard = () => {
         days_of_week: newCampaign.days_of_week,
         rotation_interval: newCampaign.rotation_interval,
         rotation_unit: newCampaign.rotation_unit,
-        creative_file: newCampaign.creative_file
+        creative_file: newCampaign.creative_file,
+        priority: newCampaign.priority
       });
       setPreviewDialogOpen(true);
       setError('');
@@ -175,6 +177,9 @@ const AdminDashboard = () => {
       if (pendingCampaignData.days_of_week && pendingCampaignData.days_of_week.length > 0) {
         formData.append('days_of_week', JSON.stringify(pendingCampaignData.days_of_week));
       }
+      if (pendingCampaignData.priority) {
+        formData.append('priority', pendingCampaignData.priority.toString());
+      }
       formData.append('creative', pendingCampaignData.creative_file);
       
       await apiClient.createCampaign(formData);
@@ -189,7 +194,8 @@ const AdminDashboard = () => {
         days_of_week: [],
         rotation_interval: '1',
         rotation_unit: 'hours',
-        creative_file: null
+        creative_file: null,
+        priority: 50
       });
       setPreviewDialogOpen(false);
       setPendingCampaignData(null);
@@ -711,6 +717,17 @@ const AdminDashboard = () => {
                         </label>
                       ))}
                     </div>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600 mb-1 block">Priority (1-100, higher = more important)</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={newCampaign.priority}
+                      onChange={(e) => setNewCampaign({ ...newCampaign, priority: parseInt(e.target.value) })}
+                      placeholder="50"
+                    />
                   </div>
                   <Input
                     type="file"
