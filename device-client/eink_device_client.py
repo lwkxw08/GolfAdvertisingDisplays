@@ -20,14 +20,19 @@ import queue
 import websocket
 import ssl
 
-sys.path.append('/home/pi/e-Paper/RaspberryPi_JetsonNano/python/lib')
+for path in ['/home/pi/e-Paper/RaspberryPi/python/lib', 
+             '/home/pi/e-Paper/RaspberryPi_JetsonNano/python/lib']:
+    if os.path.exists(path):
+        sys.path.append(path)
+        break
 
 try:
     import epd13in3E
     import epdconfig
     EINK_AVAILABLE = True
-except ImportError:
-    print("WARNING: Waveshare E-ink library not found. Running in simulation mode.")
+    print("Waveshare E-ink library loaded successfully")
+except ImportError as e:
+    print(f"WARNING: Waveshare E-ink library not found: {e}. Running in simulation mode.")
     EINK_AVAILABLE = False
 
 logging.basicConfig(
@@ -247,6 +252,7 @@ class EInkDisplayManager:
         self.last_refresh = None
         self.refresh_count = 0
         self.error_count = 0
+        self.is_sleeping = False
         
         if EINK_AVAILABLE:
             try:
@@ -285,6 +291,11 @@ class EInkDisplayManager:
         try:
             start_time = time.time()
             logger.info(f"Displaying image: {image_path}")
+            
+            if self.is_sleeping:
+                logger.info("Re-initializing display after sleep")
+                self.epd.init()
+                self.is_sleeping = False
             
             if not os.path.exists(image_path):
                 logger.error(f"Image file not found: {image_path}")
@@ -338,6 +349,7 @@ class EInkDisplayManager:
         if EINK_AVAILABLE and self.epd:
             try:
                 self.epd.sleep()
+                self.is_sleeping = True
                 logger.info("Display put to sleep")
             except Exception as e:
                 logger.error(f"Failed to put display to sleep: {e}")
