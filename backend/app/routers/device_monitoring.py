@@ -316,6 +316,16 @@ async def issue_remote_command(
     db.commit()
     db.refresh(remote_command)
     
+    from ..websocket_manager import websocket_manager
+    if command.command_type == "refresh_display":
+        message = {
+            "type": "remote_command",
+            "command_type": "refresh_display",
+            "command_id": remote_command.id,
+            "action": "refresh_playlist"
+        }
+        await websocket_manager.send_to_device(device.device_id, message)
+    
     return remote_command
 
 @router.get("/devices/{device_id}/commands", response_model=List[schemas.DeviceRemoteCommandResponse])
@@ -347,13 +357,35 @@ async def get_pending_commands(
     device_id: int,
     db: Session = Depends(get_db)
 ):
-    """Get pending commands for a device (called by device client)"""
+    """Get pending commands for a device by numeric ID (called by device client)"""
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     
     commands = db.query(DeviceRemoteCommand).filter(
         DeviceRemoteCommand.device_id == device_id,
+        DeviceRemoteCommand.status == CommandStatus.PENDING
+    ).order_by(DeviceRemoteCommand.issued_at.asc()).all()
+    
+    for cmd in commands:
+        cmd.status = CommandStatus.EXECUTING
+    
+    db.commit()
+    
+    return commands
+
+@router.get("/device/{external_device_id}/commands/pending", response_model=List[schemas.DeviceRemoteCommandResponse])
+async def get_pending_commands_by_external_id(
+    external_device_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get pending commands for a device by external device_id (called by device client)"""
+    device = db.query(Device).filter(Device.device_id == external_device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    commands = db.query(DeviceRemoteCommand).filter(
+        DeviceRemoteCommand.device_id == device.id,
         DeviceRemoteCommand.status == CommandStatus.PENDING
     ).order_by(DeviceRemoteCommand.issued_at.asc()).all()
     
@@ -371,6 +403,27 @@ async def update_command_result(
     db: Session = Depends(get_db)
 ):
     """Update command execution result (called by device client)"""
+    command = db.query(DeviceRemoteCommand).filter(DeviceRemoteCommand.id == command_id).first()
+    if not command:
+        raise HTTPException(status_code=404, detail="Command not found")
+    
+    command.status = CommandStatus.COMPLETED if result.get("success") else CommandStatus.FAILED
+    command.executed_at = datetime.now(timezone.utc)
+    command.result = result
+    command.error_message = result.get("error")
+    
+    db.commit()
+    db.refresh(command)
+    
+    return command
+
+@router.put("/device/commands/{command_id}/result", response_model=schemas.DeviceRemoteCommandResponse)
+async def update_command_result_by_device(
+    command_id: int,
+    result: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """Update command execution result by device (called by device client using external ID)"""
     command = db.query(DeviceRemoteCommand).filter(DeviceRemoteCommand.id == command_id).first()
     if not command:
         raise HTTPException(status_code=404, detail="Command not found")

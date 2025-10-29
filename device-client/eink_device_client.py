@@ -498,6 +498,7 @@ class EInkDeviceClient:
         self.current_playlist = []
         self.sync_errors = 0
         self.refresh_requested = False
+        self.command_polling_thread = None
         
         logger.info(f"E-ink device client initialized for device: {self.device_id}")
     
@@ -534,6 +535,7 @@ class EInkDeviceClient:
         
         self.connectivity.start_monitoring()
         self.websocket_manager.start()
+        self._start_command_polling()
         
         self.running = True
         try:
@@ -555,6 +557,8 @@ class EInkDeviceClient:
         self.running = False
         self.connectivity.stop_monitoring()
         self.websocket_manager.stop()
+        if self.command_polling_thread:
+            self.command_polling_thread.join(timeout=5)
         self.display.sleep()
         logger.info("Device client stopped")
     
@@ -562,6 +566,85 @@ class EInkDeviceClient:
         """Handle refresh request from WebSocket notification"""
         self.refresh_requested = True
         logger.info("Refresh request received via WebSocket")
+    
+    def _start_command_polling(self):
+        """Start background thread for polling remote commands"""
+        self.command_polling_thread = threading.Thread(target=self._poll_commands_loop)
+        self.command_polling_thread.daemon = True
+        self.command_polling_thread.start()
+        logger.info("Command polling thread started")
+    
+    def _poll_commands_loop(self):
+        """Background loop to poll for remote commands"""
+        while self.running:
+            try:
+                time.sleep(15)
+                self._check_and_execute_commands()
+            except Exception as e:
+                logger.error(f"Error in command polling loop: {e}")
+                time.sleep(30)
+    
+    def _check_and_execute_commands(self):
+        """Check for pending commands and execute them"""
+        try:
+            url = f"{self.api_base_url}/api/device/{self.device_id}/commands/pending"
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code != 200:
+                return
+            
+            commands = response.json()
+            
+            for command in commands:
+                command_id = command.get('id')
+                command_type = command.get('command_type')
+                
+                logger.info(f"Executing remote command: {command_type} (ID: {command_id})")
+                
+                result = self._execute_command(command_type, command.get('command_data'))
+                
+                result_url = f"{self.api_base_url}/api/device/commands/{command_id}/result"
+                requests.put(result_url, json=result, timeout=10)
+                
+                logger.info(f"Command {command_type} completed: {result.get('success')}")
+                
+        except Exception as e:
+            logger.error(f"Failed to check/execute commands: {e}")
+    
+    def _execute_command(self, command_type: str, command_data: Optional[Dict]) -> Dict[str, Any]:
+        """Execute a remote command and return result"""
+        try:
+            if command_type == "refresh_display":
+                self.refresh_requested = True
+                return {"success": True, "message": "Display refresh triggered"}
+            
+            elif command_type == "reboot":
+                try:
+                    subprocess.run(['sudo', 'reboot'], check=True, timeout=5)
+                    return {"success": True, "message": "Reboot initiated"}
+                except subprocess.CalledProcessError:
+                    return {"success": False, "error": "Reboot failed - insufficient privileges"}
+                except Exception as e:
+                    return {"success": False, "error": f"Reboot failed: {str(e)}"}
+            
+            elif command_type == "get_diagnostics":
+                diagnostics = {
+                    "device_id": self.device_id,
+                    "uptime_hours": self._get_uptime_hours(),
+                    "connectivity": self.connectivity.get_current_status(),
+                    "power": self.power.get_status(),
+                    "display": self.display.get_status(),
+                    "last_sync": self.last_sync.isoformat() if self.last_sync else None,
+                    "sync_errors": self.sync_errors
+                }
+                return {"success": True, "diagnostics": diagnostics}
+            
+            else:
+                return {"success": False, "error": f"Unsupported command: {command_type}"}
+                
+        except Exception as e:
+            logger.error(f"Error executing command {command_type}: {e}")
+            return {"success": False, "error": str(e)}
     
     def _main_loop_iteration(self):
         """Single iteration of main loop"""
