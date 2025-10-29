@@ -436,7 +436,16 @@ async def list_campaigns(
 @app.put("/admin/campaigns/{campaign_id}", response_model=SponsorCampaignResponse)
 async def update_campaign(
     campaign_id: int,
-    campaign_data: SponsorCampaignUpdate,
+    sponsor_name: Optional[str] = Form(None),
+    start_date: Optional[str] = Form(None),
+    end_date: Optional[str] = Form(None),
+    start_time: Optional[str] = Form(None),
+    end_time: Optional[str] = Form(None),
+    days_of_week: Optional[str] = Form(None),
+    rotation_interval: Optional[int] = Form(None),
+    rotation_unit: Optional[str] = Form(None),
+    priority: Optional[int] = Form(None),
+    is_active: Optional[bool] = Form(None),
     creative: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
@@ -445,11 +454,46 @@ async def update_campaign(
     if not db_campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
     
-    update_data = campaign_data.dict(exclude_unset=True)
+    update_data = {}
     
-    if 'days_of_week' in update_data and update_data['days_of_week'] is not None:
+    if sponsor_name is not None:
+        update_data['sponsor_name'] = sponsor_name
+    
+    if start_date is not None:
+        update_data['start_date'] = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+    
+    if end_date is not None:
+        update_data['end_date'] = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    
+    if start_time is not None:
+        update_data['start_time'] = start_time
+    
+    if end_time is not None:
+        update_data['end_time'] = end_time
+    
+    if days_of_week is not None:
         import json
-        update_data['days_of_week'] = json.dumps(update_data['days_of_week'])
+        try:
+            if days_of_week.startswith('[') or days_of_week.startswith('{'):
+                days_list = json.loads(days_of_week)
+            else:
+                days_list = [d.strip() for d in days_of_week.split(',') if d.strip()]
+            update_data['days_of_week'] = days_list
+        except:
+            days_list = [d.strip() for d in days_of_week.split(',') if d.strip()]
+            update_data['days_of_week'] = days_list
+    
+    if rotation_interval is not None:
+        update_data['rotation_interval'] = rotation_interval
+    
+    if rotation_unit is not None:
+        update_data['rotation_unit'] = CampaignInterval(rotation_unit)
+    
+    if priority is not None:
+        update_data['priority'] = priority
+    
+    if is_active is not None:
+        update_data['is_active'] = is_active
     
     if creative:
         file_content = await creative.read()
