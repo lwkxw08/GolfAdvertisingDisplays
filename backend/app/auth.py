@@ -35,13 +35,16 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
         email = payload.get("sub")
         if email is None:
+            print("DEBUG: JWT token missing 'sub' field")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Could not validate credentials",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        print(f"DEBUG: JWT token verified successfully for email: {email}")
         return email
-    except JWTError:
+    except JWTError as e:
+        print(f"DEBUG: JWT verification failed: {type(e).__name__} - {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
@@ -51,10 +54,12 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 def get_current_user(email: str = Depends(verify_token), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == email).first()
     if user is None:
+        print(f"DEBUG: User not found in database: {email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found"
         )
+    print(f"DEBUG: User found: {email}, role: {user.role}")
     return user
 
 def require_admin(current_user: User = Depends(get_current_user)):
