@@ -278,7 +278,7 @@ class EInkDisplayManager:
         
         try:
             logger.info("Initializing E-ink display...")
-            self.epd.init()
+            self.epd.Init()
             self.epd.Clear()
             logger.info("E-ink display initialized successfully")
             return True
@@ -299,7 +299,7 @@ class EInkDisplayManager:
             
             if self.is_sleeping:
                 logger.info("Re-initializing display after sleep")
-                self.epd.init()
+                self.epd.Init()
                 self.is_sleeping = False
             
             if not os.path.exists(image_path):
