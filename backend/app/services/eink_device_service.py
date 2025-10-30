@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional, Any
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from PIL import Image, ImageDraw, ImageFont
 import io
 import json
@@ -40,7 +40,7 @@ class EInkDeviceService:
         if not device:
             raise ValueError(f"Device {device_id} not found")
         
-        device.last_sync = datetime.utcnow()
+        device.last_sync = datetime.now(timezone.utc)
         device.is_online = True
         db.commit()
         
@@ -56,7 +56,7 @@ class EInkDeviceService:
     def _get_optimized_content(self, db: Session, device: Device, 
                              connectivity_type: str) -> Dict[str, Any]:
         """Get content optimized for connectivity type and E-ink display"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         current_time = now.strftime("%H:%M")
         current_day = now.strftime("%A").lower()
         
@@ -302,7 +302,7 @@ class EInkDeviceService:
     
     def _get_power_config(self, device: Device, connectivity_type: str) -> Dict[str, Any]:
         """Get power management configuration for solar-powered Pi Zero 2W"""
-        current_hour = datetime.utcnow().hour
+        current_hour = datetime.now(timezone.utc).hour
         
         if 22 <= current_hour or current_hour <= 6:  # Night time
             power_mode = 'deep_sleep'
@@ -390,7 +390,7 @@ class EInkDeviceService:
         try:
             analytics = DeviceAnalytics(
                 device_id=device.id,
-                sync_timestamp=datetime.utcnow(),
+                sync_timestamp=datetime.now(timezone.utc),
                 uptime_hours=1.0,  # Assume 1 hour uptime per sync
                 impressions_count=1,
                 notices_displayed=0,
@@ -413,7 +413,7 @@ class EInkDeviceService:
         if not device:
             raise ValueError(f"Device {device_id} not found")
         
-        device.last_sync = datetime.utcnow()
+        device.last_sync = datetime.now(timezone.utc)
         device.is_online = True
         db.commit()
         
@@ -425,7 +425,7 @@ class EInkDeviceService:
         try:
             analytics = DeviceAnalytics(
                 device_id=device.id,
-                sync_timestamp=datetime.utcnow(),
+                sync_timestamp=datetime.now(timezone.utc),
                 uptime_hours=status_data.get('uptime_hours', 1.0),
                 impressions_count=status_data.get('impressions_count', 1),
                 notices_displayed=status_data.get('notices_displayed', 0),
@@ -582,7 +582,7 @@ class EInkDeviceService:
         Mark devices as offline if they haven't sent an update in the specified time.
         Returns the number of devices marked as offline.
         """
-        threshold_time = datetime.utcnow() - timedelta(minutes=offline_threshold_minutes)
+        threshold_time = datetime.now(timezone.utc) - timedelta(minutes=offline_threshold_minutes)
         
         stale_devices = db.query(Device).filter(
             Device.is_online == True,
