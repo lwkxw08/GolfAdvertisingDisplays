@@ -11,7 +11,6 @@ import json
 import logging
 import requests
 import subprocess
-import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from PIL import Image
@@ -24,9 +23,7 @@ import ssl
 try:
     from waveshare_epd import epd13in3E, epdconfig
     EINK_AVAILABLE = True
-    EINK_SOURCE = "pip"
-    EINK_EPD_PATH = epd13in3E.__file__
-    EINK_CONFIG_PATH = epdconfig.__file__
+    print("Waveshare E-ink library loaded successfully (pip package)")
 except ImportError:
     for path in ['/home/pi/e-Paper/RaspberryPi/python/lib', 
                  '/home/pi/e-Paper/RaspberryPi_JetsonNano/python/lib']:
@@ -38,14 +35,10 @@ except ImportError:
         import epd13in3E
         import epdconfig
         EINK_AVAILABLE = True
-        EINK_SOURCE = "local"
-        EINK_EPD_PATH = epd13in3E.__file__
-        EINK_CONFIG_PATH = epdconfig.__file__
+        print("Waveshare E-ink library loaded successfully (local installation)")
     except ImportError as e:
+        print(f"WARNING: Waveshare E-ink library not found: {e}. Running in simulation mode.")
         EINK_AVAILABLE = False
-        EINK_SOURCE = "none"
-        EINK_EPD_PATH = None
-        EINK_CONFIG_PATH = None
 
 logging.basicConfig(
     level=logging.INFO,
@@ -266,16 +259,10 @@ class EInkDisplayManager:
         self.error_count = 0
         self.is_sleeping = False
         
-        logger.info(f"E-ink library source: {EINK_SOURCE}")
-        if EINK_EPD_PATH:
-            logger.info(f"epd13in3E module path: {EINK_EPD_PATH}")
-            logger.info(f"epdconfig module path: {EINK_CONFIG_PATH}")
-        
         if EINK_AVAILABLE:
             try:
                 self.epd = epd13in3E.EPD()
                 logger.info("E-ink display initialized")
-                logger.info(f"Display methods available: {[m for m in dir(self.epd) if 'display' in m.lower() or 'clear' in m.lower() or 'init' in m.lower()]}")
             except Exception as e:
                 logger.error(f"Failed to initialize E-ink display: {e}")
                 self.epd = None
@@ -310,12 +297,10 @@ class EInkDisplayManager:
             start_time = time.time()
             logger.info(f"Displaying image: {image_path}")
             
-            logger.info("Forcing full re-initialization and clear for debugging")
-            self.epd.Init()
-            self.is_sleeping = False
-            
-            logger.info("Clearing display to make refresh visible")
-            self.epd.Clear()
+            if self.is_sleeping:
+                logger.info("Re-initializing display after sleep")
+                self.epd.Init()
+                self.is_sleeping = False
             
             if not os.path.exists(image_path):
                 logger.error(f"Image file not found: {image_path}")
@@ -329,7 +314,6 @@ class EInkDisplayManager:
             if image.mode != 'RGB':
                 image = image.convert('RGB')
             
-            logger.info("Calling epd.display() to update screen")
             self.epd.display(self.epd.getbuffer(image))
             
             refresh_duration = time.time() - start_time
@@ -515,7 +499,6 @@ class EInkDeviceClient:
         self.sync_errors = 0
         self.refresh_requested = False
         self.command_polling_thread = None
-        self.next_refresh_at = None
         
         logger.info(f"E-ink device client initialized for device: {self.device_id}")
     
@@ -780,27 +763,11 @@ class EInkDeviceClient:
             playlist_data = response.json()
             items = playlist_data.get('items', [])
             
-            next_refresh_str = playlist_data.get('next_refresh_at')
-            if next_refresh_str:
-                try:
-                    self.next_refresh_at = datetime.fromisoformat(next_refresh_str.replace('Z', '+00:00'))
-                    logger.info(f"Next content boundary at: {self.next_refresh_at.isoformat()}")
-                except (ValueError, AttributeError) as e:
-                    logger.warning(f"Failed to parse next_refresh_at: {e}")
-                    self.next_refresh_at = None
-            else:
-                self.next_refresh_at = None
-            
             if not items:
                 logger.info("No content items in playlist")
                 return
             
-            item = items[0]
-            
-            item_id = item.get('id', 'unknown')
-            item_type = item['type']
-            item_name = item.get('title') or item.get('sponsor_name') or f"ID-{item_id}"
-            logger.info(f"Selected item: type={item_type}, id={item_id}, name={item_name}")
+            item = items[0]  # Items are already sorted by priority
             
             if item['type'] == 'notice':
                 success = self.display.display_text(
@@ -810,18 +777,9 @@ class EInkDeviceClient:
                 )
             elif item['type'] == 'campaign':
                 image_url = item.get('eink_url', item.get('content'))
-                logger.info(f"Campaign image URL: {image_url}")
-                
                 if image_url:
                     image_path = self._download_image(image_url)
                     if image_path:
-                        try:
-                            with open(image_path, 'rb') as f:
-                                image_hash = hashlib.sha256(f.read()).hexdigest()[:16]
-                            logger.info(f"Image hash: {image_hash}")
-                        except Exception as e:
-                            logger.warning(f"Failed to hash image: {e}")
-                        
                         success = self.display.display_image(image_path)
                         try:
                             os.remove(image_path)
@@ -833,9 +791,9 @@ class EInkDeviceClient:
                     success = False
             
             if success:
-                logger.info(f"Successfully displayed {item_type} (id={item_id}, name={item_name})")
+                logger.info(f"Successfully displayed {item['type']}: {item.get('title', item.get('sponsor_name', 'Unknown'))}")
             else:
-                logger.error(f"Failed to display {item_type} (id={item_id})")
+                logger.error(f"Failed to display {item['type']}")
                 
         except Exception as e:
             logger.error(f"Failed to sync and display content: {e}")
@@ -863,40 +821,13 @@ class EInkDeviceClient:
             return None
     
     def _sleep_until_next_sync(self):
-        """Sleep until next sync time with smart boundary detection and power-mode awareness"""
+        """Sleep until next sync time, but wake up early if refresh is requested"""
         try:
             self.display.sleep()
             
-            power_status = self.power.get_status()
-            power_mode = power_status['power_mode']
-            base_interval = self._get_sync_interval_for_power_mode(power_mode)
+            logger.info(f"Sleeping for {self.sync_interval} seconds until next sync")
             
-            actual_interval = base_interval
-            
-            if self.next_refresh_at and power_mode in ['normal', 'slow']:
-                from datetime import timezone
-                now = datetime.now(timezone.utc)
-                seconds_until_boundary = (self.next_refresh_at - now).total_seconds()
-                
-                if seconds_until_boundary > 0:
-                    if power_mode == 'normal':
-                        actual_interval = min(base_interval, int(seconds_until_boundary) + 5)
-                        logger.info(f"Smart sleep: {actual_interval}s until boundary (power mode: {power_mode})")
-                    elif power_mode == 'slow':
-                        debounce_seconds = 300
-                        actual_interval = min(base_interval, int(seconds_until_boundary) + debounce_seconds)
-                        logger.info(f"Smart sleep with debounce: {actual_interval}s until boundary (power mode: {power_mode})")
-                else:
-                    logger.info(f"Boundary passed, using base interval: {base_interval}s (power mode: {power_mode})")
-            else:
-                if power_mode in ['deep_sleep', 'emergency']:
-                    logger.info(f"Power-saving mode: {base_interval}s interval (power mode: {power_mode})")
-                else:
-                    logger.info(f"No boundary hint, using base interval: {base_interval}s (power mode: {power_mode})")
-            
-            logger.info(f"Sleeping for {actual_interval} seconds until next sync")
-            
-            for _ in range(actual_interval):
+            for _ in range(self.sync_interval):
                 if self.refresh_requested:
                     logger.info("Waking up early due to refresh request")
                     break
@@ -906,11 +837,7 @@ class EInkDeviceClient:
             raise
         except Exception as e:
             logger.error(f"Error during sleep: {e}")
-            for _ in range(60):
-                if self.refresh_requested:
-                    logger.info("Waking up early due to refresh request (fallback)")
-                    break
-                time.sleep(1)
+            time.sleep(60)  # Fallback sleep
 
 def main():
     """Main entry point"""
