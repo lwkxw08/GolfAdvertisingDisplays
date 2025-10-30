@@ -11,6 +11,7 @@ import json
 import logging
 import requests
 import subprocess
+import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from PIL import Image
@@ -781,6 +782,11 @@ class EInkDeviceClient:
             
             item = items[0]
             
+            item_id = item.get('id', 'unknown')
+            item_type = item['type']
+            item_name = item.get('title') or item.get('sponsor_name') or f"ID-{item_id}"
+            logger.info(f"Selected item: type={item_type}, id={item_id}, name={item_name}")
+            
             if item['type'] == 'notice':
                 success = self.display.display_text(
                     item.get('title', ''),
@@ -789,9 +795,18 @@ class EInkDeviceClient:
                 )
             elif item['type'] == 'campaign':
                 image_url = item.get('eink_url', item.get('content'))
+                logger.info(f"Campaign image URL: {image_url}")
+                
                 if image_url:
                     image_path = self._download_image(image_url)
                     if image_path:
+                        try:
+                            with open(image_path, 'rb') as f:
+                                image_hash = hashlib.sha256(f.read()).hexdigest()[:16]
+                            logger.info(f"Image hash: {image_hash}")
+                        except Exception as e:
+                            logger.warning(f"Failed to hash image: {e}")
+                        
                         success = self.display.display_image(image_path)
                         try:
                             os.remove(image_path)
@@ -803,9 +818,9 @@ class EInkDeviceClient:
                     success = False
             
             if success:
-                logger.info(f"Successfully displayed {item['type']}: {item.get('title', item.get('sponsor_name', 'Unknown'))}")
+                logger.info(f"Successfully displayed {item_type} (id={item_id}, name={item_name})")
             else:
-                logger.error(f"Failed to display {item['type']}")
+                logger.error(f"Failed to display {item_type} (id={item_id})")
                 
         except Exception as e:
             logger.error(f"Failed to sync and display content: {e}")
