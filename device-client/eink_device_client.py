@@ -25,6 +25,8 @@ try:
     from waveshare_epd import epd13in3E, epdconfig
     EINK_AVAILABLE = True
     print("Waveshare E-ink library loaded successfully (pip package)")
+    print(f"epd13in3E module: {epd13in3E.__file__}")
+    print(f"epdconfig module: {epdconfig.__file__}")
 except ImportError:
     for path in ['/home/pi/e-Paper/RaspberryPi/python/lib', 
                  '/home/pi/e-Paper/RaspberryPi_JetsonNano/python/lib']:
@@ -37,6 +39,8 @@ except ImportError:
         import epdconfig
         EINK_AVAILABLE = True
         print("Waveshare E-ink library loaded successfully (local installation)")
+        print(f"epd13in3E module: {epd13in3E.__file__}")
+        print(f"epdconfig module: {epdconfig.__file__}")
     except ImportError as e:
         print(f"WARNING: Waveshare E-ink library not found: {e}. Running in simulation mode.")
         EINK_AVAILABLE = False
@@ -298,10 +302,12 @@ class EInkDisplayManager:
             start_time = time.time()
             logger.info(f"Displaying image: {image_path}")
             
-            if self.is_sleeping:
-                logger.info("Re-initializing display after sleep")
-                self.epd.Init()
-                self.is_sleeping = False
+            logger.info("Forcing full re-initialization and clear for debugging")
+            self.epd.Init()
+            self.is_sleeping = False
+            
+            logger.info("Clearing display to make refresh visible")
+            self.epd.Clear()
             
             if not os.path.exists(image_path):
                 logger.error(f"Image file not found: {image_path}")
@@ -315,6 +321,7 @@ class EInkDisplayManager:
             if image.mode != 'RGB':
                 image = image.convert('RGB')
             
+            logger.info("Calling epd.display() to update screen")
             self.epd.display(self.epd.getbuffer(image))
             
             refresh_duration = time.time() - start_time
