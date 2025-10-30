@@ -6,10 +6,24 @@ import asyncio
 
 from .database import SessionLocal, SponsorCampaign, Notice, Device
 from .services.eink_device_service import eink_device_service
+from .services.command_service import CommandService
 
 logger = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler()
+
+def cleanup_stuck_commands():
+    """Background job to cleanup stuck/timed-out commands"""
+    db = SessionLocal()
+    try:
+        logger.info("Running scheduled command cleanup...")
+        result = CommandService.cleanup_stuck_commands(db)
+        if result['total'] > 0:
+            logger.info(f"Cleaned up {result['total']} stuck commands (pending: {result['pending_timeout']}, executing: {result['executing_timeout']})")
+    except Exception as e:
+        logger.error(f"Error in scheduled command cleanup: {e}")
+    finally:
+        db.close()
 
 def check_device_status():
     """Background job to check and update device online/offline status"""
@@ -110,8 +124,15 @@ def start_scheduler():
             name='Check for campaign/notice start/end events',
             replace_existing=True
         )
+        scheduler.add_job(
+            cleanup_stuck_commands,
+            trigger=IntervalTrigger(minutes=2),
+            id='cleanup_stuck_commands',
+            name='Cleanup stuck/timed-out commands',
+            replace_existing=True
+        )
         scheduler.start()
-        logger.info("Background scheduler started - checking device status every 5 minutes and campaign/notice events every minute")
+        logger.info("Background scheduler started - checking device status every 5 minutes, campaign/notice events every minute, and command cleanup every 2 minutes")
 
 def shutdown_scheduler():
     """Shutdown the background scheduler"""

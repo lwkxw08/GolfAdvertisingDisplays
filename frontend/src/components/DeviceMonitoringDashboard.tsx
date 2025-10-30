@@ -56,11 +56,24 @@ interface DeviceAlert {
   resolved_at: string | null;
 }
 
+interface DeviceCommand {
+  id: number;
+  device_id: number;
+  command_type: string;
+  status: 'pending' | 'executing' | 'completed' | 'failed' | 'cancelled';
+  issued_at: string;
+  executed_at: string | null;
+  result: any;
+  error_message: string | null;
+}
+
 const DeviceMonitoringDashboard: React.FC = () => {
   const [dashboard, setDashboard] = useState<MonitoringDashboard | null>(null);
   const [alerts, setAlerts] = useState<DeviceAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deviceCommands, setDeviceCommands] = useState<Record<number, DeviceCommand[]>>({});
+  const [pendingCommands, setPendingCommands] = useState<Record<number, number>>({});
 
   useEffect(() => {
     loadDashboardData();
@@ -95,12 +108,63 @@ const DeviceMonitoringDashboard: React.FC = () => {
 
   const handleIssueCommand = async (deviceId: number, commandType: string) => {
     try {
-      await apiClient.issueRemoteCommand(deviceId, { command_type: commandType });
+      if (pendingCommands[deviceId]) {
+        setError('A command is already in progress for this device');
+        return;
+      }
+
+      const command = await apiClient.issueRemoteCommand(deviceId, { command_type: commandType });
       setError('');
-      alert(`Command "${commandType}" issued successfully!`);
+      
+      setPendingCommands(prev => ({ ...prev, [deviceId]: command.id }));
+      
+      pollCommandStatus(deviceId, command.id);
     } catch (err: any) {
       setError(err.message || 'Failed to issue command');
     }
+  };
+
+  const pollCommandStatus = async (deviceId: number, commandId: number) => {
+    const maxAttempts = 60; // Poll for up to 60 seconds
+    let attempts = 0;
+
+    const poll = async () => {
+      try {
+        const commands = await apiClient.getDeviceCommands(deviceId);
+        const command = commands.find((cmd: DeviceCommand) => cmd.id === commandId);
+
+        if (command) {
+          setDeviceCommands(prev => ({
+            ...prev,
+            [deviceId]: [command, ...(prev[deviceId] || []).filter(c => c.id !== commandId)].slice(0, 5)
+          }));
+
+          if (command.status === 'completed' || command.status === 'failed') {
+            setPendingCommands(prev => {
+              const updated = { ...prev };
+              delete updated[deviceId];
+              return updated;
+            });
+            return;
+          }
+        }
+
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 1000); // Poll every second
+        } else {
+          setPendingCommands(prev => {
+            const updated = { ...prev };
+            delete updated[deviceId];
+            return updated;
+          });
+        }
+      } catch (err) {
+        console.error('Failed to poll command status:', err);
+      }
+    };
+
+    poll();
   };
 
   const getHealthScoreColor = (score: number) => {
@@ -310,19 +374,53 @@ const DeviceMonitoringDashboard: React.FC = () => {
                       </div>
                     </div>
                   </div>
+                  
+                  {deviceCommands[device.device_id]?.[0] && (
+                    <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">Latest Command</span>
+                        <Badge variant={
+                          deviceCommands[device.device_id][0].status === 'completed' ? 'default' :
+                          deviceCommands[device.device_id][0].status === 'failed' ? 'destructive' :
+                          deviceCommands[device.device_id][0].status === 'executing' ? 'secondary' :
+                          'outline'
+                        }>
+                          {deviceCommands[device.device_id][0].status}
+                        </Badge>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        <div className="flex items-center gap-2">
+                          <Terminal className="w-3 h-3" />
+                          <span className="font-medium">{deviceCommands[device.device_id][0].command_type.replace('_', ' ')}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                          <Clock className="w-3 h-3" />
+                          {new Date(deviceCommands[device.device_id][0].issued_at).toLocaleString()}
+                        </div>
+                        {deviceCommands[device.device_id][0].error_message && (
+                          <div className="mt-2 text-xs text-red-600">
+                            Error: {deviceCommands[device.device_id][0].error_message}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleIssueCommand(device.device_id, 'refresh_display')}
+                      disabled={!!pendingCommands[device.device_id]}
                     >
-                      <RefreshCw className="w-4 h-4 mr-1" />
+                      <RefreshCw className={`w-4 h-4 mr-1 ${pendingCommands[device.device_id] ? 'animate-spin' : ''}`} />
                       Refresh Display
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleIssueCommand(device.device_id, 'reboot')}
+                      disabled={!!pendingCommands[device.device_id]}
                     >
                       <Activity className="w-4 h-4 mr-1" />
                       Reboot
@@ -331,6 +429,7 @@ const DeviceMonitoringDashboard: React.FC = () => {
                       size="sm"
                       variant="outline"
                       onClick={() => handleIssueCommand(device.device_id, 'get_diagnostics')}
+                      disabled={!!pendingCommands[device.device_id]}
                     >
                       <Terminal className="w-4 h-4 mr-1" />
                       Diagnostics

@@ -293,6 +293,8 @@ async def issue_remote_command(
     db: Session = Depends(get_db)
 ):
     """Issue a remote command to a device"""
+    from ..services.command_service import CommandService
+    
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -303,6 +305,12 @@ async def issue_remote_command(
     valid_commands = ["reboot", "refresh_display", "update_firmware", "get_logs", "clear_cache", "test_display", "get_diagnostics"]
     if command.command_type not in valid_commands:
         raise HTTPException(status_code=400, detail=f"Invalid command type. Valid commands: {', '.join(valid_commands)}")
+    
+    rate_limit_error = CommandService.check_rate_limit(db, device_id, command.command_type)
+    if rate_limit_error:
+        raise HTTPException(status_code=429, detail=rate_limit_error)
+    
+    CommandService.deduplicate_pending_commands(db, device_id, command.command_type)
     
     remote_command = DeviceRemoteCommand(
         device_id=device_id,
@@ -317,14 +325,13 @@ async def issue_remote_command(
     db.refresh(remote_command)
     
     from ..websocket_manager import websocket_manager
-    if command.command_type == "refresh_display":
-        message = {
-            "type": "remote_command",
-            "command_type": "refresh_display",
-            "command_id": remote_command.id,
-            "action": "refresh_playlist"
-        }
-        await websocket_manager.send_to_device(device.device_id, message)
+    message = {
+        "type": "remote_command",
+        "command_type": command.command_type,
+        "command_id": remote_command.id,
+        "action": "refresh_playlist" if command.command_type == "refresh_display" else command.command_type
+    }
+    await websocket_manager.send_to_device(device.device_id, message)
     
     return remote_command
 

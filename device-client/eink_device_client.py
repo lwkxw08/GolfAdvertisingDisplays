@@ -459,9 +459,11 @@ class WebSocketManager:
             data = json.loads(message)
             logger.info(f"WebSocket notification received: {data.get('type')}")
             
-            if data.get('action') == 'refresh_playlist':
+            if data.get('type') == 'remote_command':
+                self.refresh_callback(data)
+            elif data.get('action') == 'refresh_playlist':
                 logger.info(f"Triggering playlist refresh due to {data.get('type')}")
-                self.refresh_callback()
+                self.refresh_callback({})
             
         except Exception as e:
             logger.error(f"Error processing WebSocket message: {e}")
@@ -490,7 +492,7 @@ class EInkDeviceClient:
         self.websocket_manager = WebSocketManager(
             self.device_id,
             self.api_base_url,
-            self._handle_refresh_request
+            self._handle_websocket_command
         )
         
         self.running = False
@@ -499,6 +501,7 @@ class EInkDeviceClient:
         self.sync_errors = 0
         self.refresh_requested = False
         self.command_polling_thread = None
+        self.executed_command_ids = set()
         
         logger.info(f"E-ink device client initialized for device: {self.device_id}")
     
@@ -562,10 +565,35 @@ class EInkDeviceClient:
         self.display.sleep()
         logger.info("Device client stopped")
     
-    def _handle_refresh_request(self):
-        """Handle refresh request from WebSocket notification"""
-        self.refresh_requested = True
-        logger.info("Refresh request received via WebSocket")
+    def _handle_websocket_command(self, command_data: dict):
+        """Handle command from WebSocket notification"""
+        command_id = command_data.get('command_id')
+        command_type = command_data.get('command_type')
+        
+        if not command_id or not command_type:
+            logger.warning("WebSocket command missing command_id or command_type")
+            return
+        
+        if command_id in self.executed_command_ids:
+            logger.info(f"Command {command_id} already executed, skipping")
+            return
+        
+        logger.info(f"Executing WebSocket command: {command_type} (ID: {command_id})")
+        
+        result = self._execute_command(command_type, command_data.get('command_data'))
+        
+        self.executed_command_ids.add(command_id)
+        if len(self.executed_command_ids) > 100:
+            oldest_ids = list(self.executed_command_ids)[:50]
+            for old_id in oldest_ids:
+                self.executed_command_ids.remove(old_id)
+        
+        try:
+            result_url = f"{self.api_base_url}/api/device/commands/{command_id}/result"
+            requests.put(result_url, json=result, timeout=10)
+            logger.info(f"WebSocket command {command_type} completed: {result.get('success')}")
+        except Exception as e:
+            logger.error(f"Failed to report WebSocket command result: {e}")
     
     def _start_command_polling(self):
         """Start background thread for polling remote commands"""
@@ -599,9 +627,21 @@ class EInkDeviceClient:
                 command_id = command.get('id')
                 command_type = command.get('command_type')
                 
+                if command_id in self.executed_command_ids:
+                    logger.info(f"Command {command_id} already executed via WebSocket, skipping")
+                    result_url = f"{self.api_base_url}/api/device/commands/{command_id}/result"
+                    requests.put(result_url, json={"success": True, "message": "Already executed via WebSocket"}, timeout=10)
+                    continue
+                
                 logger.info(f"Executing remote command: {command_type} (ID: {command_id})")
                 
                 result = self._execute_command(command_type, command.get('command_data'))
+                
+                self.executed_command_ids.add(command_id)
+                if len(self.executed_command_ids) > 100:
+                    oldest_ids = list(self.executed_command_ids)[:50]
+                    for old_id in oldest_ids:
+                        self.executed_command_ids.remove(old_id)
                 
                 result_url = f"{self.api_base_url}/api/device/commands/{command_id}/result"
                 requests.put(result_url, json=result, timeout=10)
