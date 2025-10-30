@@ -499,6 +499,7 @@ class EInkDeviceClient:
         self.sync_errors = 0
         self.refresh_requested = False
         self.command_polling_thread = None
+        self.next_refresh_at = None
         
         logger.info(f"E-ink device client initialized for device: {self.device_id}")
     
@@ -763,11 +764,22 @@ class EInkDeviceClient:
             playlist_data = response.json()
             items = playlist_data.get('items', [])
             
+            next_refresh_str = playlist_data.get('next_refresh_at')
+            if next_refresh_str:
+                try:
+                    self.next_refresh_at = datetime.fromisoformat(next_refresh_str.replace('Z', '+00:00'))
+                    logger.info(f"Next content boundary at: {self.next_refresh_at.isoformat()}")
+                except (ValueError, AttributeError) as e:
+                    logger.warning(f"Failed to parse next_refresh_at: {e}")
+                    self.next_refresh_at = None
+            else:
+                self.next_refresh_at = None
+            
             if not items:
                 logger.info("No content items in playlist")
                 return
             
-            item = items[0]  # Items are already sorted by priority
+            item = items[0]
             
             if item['type'] == 'notice':
                 success = self.display.display_text(
@@ -821,13 +833,39 @@ class EInkDeviceClient:
             return None
     
     def _sleep_until_next_sync(self):
-        """Sleep until next sync time, but wake up early if refresh is requested"""
+        """Sleep until next sync time with smart boundary detection and power-mode awareness"""
         try:
             self.display.sleep()
             
-            logger.info(f"Sleeping for {self.sync_interval} seconds until next sync")
+            power_status = self.power.get_status()
+            power_mode = power_status['power_mode']
+            base_interval = self._get_sync_interval_for_power_mode(power_mode)
             
-            for _ in range(self.sync_interval):
+            actual_interval = base_interval
+            
+            if self.next_refresh_at and power_mode in ['normal', 'slow']:
+                now = datetime.now()
+                seconds_until_boundary = (self.next_refresh_at - now).total_seconds()
+                
+                if seconds_until_boundary > 0:
+                    if power_mode == 'normal':
+                        actual_interval = min(base_interval, int(seconds_until_boundary) + 5)
+                        logger.info(f"Smart sleep: {actual_interval}s until boundary (power mode: {power_mode})")
+                    elif power_mode == 'slow':
+                        debounce_seconds = 300
+                        actual_interval = min(base_interval, int(seconds_until_boundary) + debounce_seconds)
+                        logger.info(f"Smart sleep with debounce: {actual_interval}s until boundary (power mode: {power_mode})")
+                else:
+                    logger.info(f"Boundary passed, using base interval: {base_interval}s (power mode: {power_mode})")
+            else:
+                if power_mode in ['deep_sleep', 'emergency']:
+                    logger.info(f"Power-saving mode: {base_interval}s interval (power mode: {power_mode})")
+                else:
+                    logger.info(f"No boundary hint, using base interval: {base_interval}s (power mode: {power_mode})")
+            
+            logger.info(f"Sleeping for {actual_interval} seconds until next sync")
+            
+            for _ in range(actual_interval):
                 if self.refresh_requested:
                     logger.info("Waking up early due to refresh request")
                     break
@@ -837,7 +875,7 @@ class EInkDeviceClient:
             raise
         except Exception as e:
             logger.error(f"Error during sleep: {e}")
-            time.sleep(60)  # Fallback sleep
+            time.sleep(60)
 
 def main():
     """Main entry point"""

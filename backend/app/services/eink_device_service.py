@@ -115,13 +115,132 @@ class EInkDeviceService:
                 item['eink_url'] = self._get_eink_optimized_url(campaign.creative_path)
                 playlist_items.append(item)
         
+        next_refresh_at = self._calculate_next_boundary(
+            db, device, now, active_notices, all_campaigns
+        )
+        
         return {
             'device_id': device.device_id,
             'last_updated': now.isoformat(),
             'items': playlist_items,
             'connectivity_type': connectivity_type,
-            'total_items': len(playlist_items)
+            'total_items': len(playlist_items),
+            'next_refresh_at': next_refresh_at.isoformat() if next_refresh_at else None
         }
+    
+    def _calculate_next_boundary(self, db: Session, device: Device, now: datetime,
+                                  active_notices: list, all_campaigns: list) -> Optional[datetime]:
+        """Calculate the next content boundary time (notice expiry, campaign start/end, day change)"""
+        from ..database import Notice, SponsorCampaign
+        boundaries = []
+        
+        for notice in active_notices:
+            if notice.end_time > now:
+                boundaries.append(notice.end_time)
+        
+        upcoming_notices = db.query(Notice).filter(
+            Notice.device_id == device.id,
+            Notice.start_time > now,
+            Notice.start_time <= now + timedelta(days=7),
+            Notice.is_active == True
+        ).all()
+        
+        for notice in upcoming_notices:
+            boundaries.append(notice.start_time)
+        
+        current_time = now.strftime("%H:%M")
+        current_day = now.strftime("%A").lower()
+        
+        for campaign in all_campaigns:
+            if campaign.start_date > now:
+                boundaries.append(campaign.start_date)
+            if campaign.end_date > now:
+                boundaries.append(campaign.end_date)
+            
+            if campaign.start_time and campaign.end_time:
+                next_time_boundary = self._calculate_next_time_boundary(
+                    now, campaign.start_time, campaign.end_time
+                )
+                if next_time_boundary:
+                    boundaries.append(next_time_boundary)
+            
+            if campaign.days_of_week:
+                try:
+                    days_list = json.loads(campaign.days_of_week) if isinstance(campaign.days_of_week, str) else campaign.days_of_week
+                    next_day_boundary = self._calculate_next_day_boundary(now, days_list, current_day)
+                    if next_day_boundary:
+                        boundaries.append(next_day_boundary)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        
+        if boundaries:
+            return min(boundaries)
+        return None
+    
+    def _calculate_next_time_boundary(self, now: datetime, start_time: str, end_time: str) -> Optional[datetime]:
+        """Calculate next time boundary for a campaign's time slot"""
+        try:
+            current_time = now.strftime("%H:%M")
+            today = now.date()
+            
+            start_hour, start_min = map(int, start_time.split(':'))
+            end_hour, end_min = map(int, end_time.split(':'))
+            
+            start_dt = datetime.combine(today, datetime.min.time().replace(hour=start_hour, minute=start_min))
+            end_dt = datetime.combine(today, datetime.min.time().replace(hour=end_hour, minute=end_min))
+            
+            if start_time == end_time:
+                return None
+            
+            if end_time < start_time:
+                if current_time >= start_time:
+                    return end_dt + timedelta(days=1)
+                elif current_time < end_time:
+                    return end_dt
+                else:
+                    return start_dt
+            else:
+                if current_time < start_time:
+                    return start_dt
+                elif current_time < end_time:
+                    return end_dt
+                else:
+                    return start_dt + timedelta(days=1)
+        except (ValueError, AttributeError):
+            return None
+    
+    def _calculate_next_day_boundary(self, now: datetime, days_list: list, current_day: str) -> Optional[datetime]:
+        """Calculate next day-of-week boundary for a campaign"""
+        try:
+            day_map = {
+                'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+                'friday': 4, 'saturday': 5, 'sunday': 6
+            }
+            
+            current_day_num = day_map.get(current_day.lower())
+            if current_day_num is None:
+                return None
+            
+            campaign_days = []
+            for day in days_list:
+                day_num = day_map.get(day.lower())
+                if day_num is not None:
+                    campaign_days.append(day_num)
+            
+            if not campaign_days:
+                return None
+            
+            campaign_days.sort()
+            
+            is_active_today = current_day_num in campaign_days
+            
+            tomorrow = now.date() + timedelta(days=1)
+            midnight = datetime.combine(tomorrow, datetime.min.time())
+            
+            return midnight
+            
+        except (ValueError, AttributeError, KeyError):
+            return None
     
     def _is_campaign_active_now(self, campaign, current_time: str, current_day: str) -> bool:
         """Check if campaign is active based on time slots and days of week"""
