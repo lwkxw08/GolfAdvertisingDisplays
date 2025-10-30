@@ -395,7 +395,7 @@ class EInkDeviceService:
                 impressions_count=1,
                 notices_displayed=0,
                 campaigns_displayed=0,
-                connectivity_type=connectivity_type,
+                # connectivity_type=connectivity_type,  # Temporarily disabled - column not in DB
                 power_level=85.0,  # Default - would come from device
                 signal_strength=-65 if connectivity_type == 'lte' else -45
             )
@@ -430,7 +430,7 @@ class EInkDeviceService:
                 impressions_count=status_data.get('impressions_count', 1),
                 notices_displayed=status_data.get('notices_displayed', 0),
                 campaigns_displayed=status_data.get('campaigns_displayed', 1),
-                connectivity_type=connectivity_type,
+                # connectivity_type=connectivity_type,  # Temporarily disabled - column not in DB
                 power_level=battery_level,
                 signal_strength=signal_strength,
                 error_count=status_data.get('error_count', 0),
