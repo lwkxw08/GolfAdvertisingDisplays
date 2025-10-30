@@ -45,6 +45,9 @@ export interface SponsorCampaign {
   creative_path: string;
   start_date: string;
   end_date: string;
+  start_time?: string;
+  end_time?: string;
+  days_of_week?: string[];
   rotation_interval: number;
   rotation_unit: 'hours' | 'days' | 'weeks' | 'months';
   priority: number;
@@ -53,6 +56,8 @@ export interface SponsorCampaign {
   schedule_id?: number;
   ab_test_group?: string;
   performance_metrics?: any;
+  status?: 'active_now' | 'scheduled' | 'expired' | 'paused';
+  currently_active?: boolean;
 }
 
 export interface Notice {

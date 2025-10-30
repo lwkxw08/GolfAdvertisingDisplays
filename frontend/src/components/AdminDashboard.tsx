@@ -65,6 +65,9 @@ const AdminDashboard = () => {
   const [editingCampaign, setEditingCampaign] = useState<SponsorCampaign | null>(null);
   const [campaignDialogOpen, setCampaignDialogOpen] = useState(false);
 
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [courseFilter, setCourseFilter] = useState<number | 'all'>('all');
+
   const auditLogs = [
     { action: 'Course Created', user: 'admin@golfcms.com', timestamp: '2024-01-15 10:30:00' },
     { action: 'Device Added', user: 'admin@golfcms.com', timestamp: '2024-01-15 09:15:00' },
@@ -329,6 +332,51 @@ const AdminDashboard = () => {
       setError(err instanceof Error ? err.message : 'Failed to save campaign');
     }
   };
+
+  const getStatusBadgeVariant = (status?: string): "default" | "secondary" | "destructive" | "outline" => {
+    switch (status) {
+      case 'active_now':
+        return 'default';
+      case 'scheduled':
+        return 'secondary';
+      case 'expired':
+        return 'destructive';
+      case 'paused':
+        return 'outline';
+      default:
+        return 'secondary';
+    }
+  };
+
+  const getStatusLabel = (status?: string): string => {
+    switch (status) {
+      case 'active_now':
+        return 'Active Now';
+      case 'scheduled':
+        return 'Scheduled';
+      case 'expired':
+        return 'Expired';
+      case 'paused':
+        return 'Paused';
+      default:
+        return 'Unknown';
+    }
+  };
+
+  const filteredCampaigns = campaigns.filter(campaign => {
+    if (statusFilter !== 'all' && campaign.status !== statusFilter) {
+      return false;
+    }
+    
+    if (courseFilter !== 'all') {
+      const device = devices.find(d => d.id === campaign.device_id);
+      if (!device || device.course_id !== courseFilter) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
 
   useEffect(() => {
     loadData();
@@ -743,8 +791,50 @@ const AdminDashboard = () => {
               </CardContent>
             </Card>
 
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle>Filter Campaigns</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm text-gray-600 mb-2 block">Status</label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="active_now">Active Now</option>
+                      <option value="scheduled">Scheduled</option>
+                      <option value="expired">Expired</option>
+                      <option value="paused">Paused</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600 mb-2 block">Golf Course</label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      value={courseFilter}
+                      onChange={(e) => setCourseFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                    >
+                      <option value="all">All Courses</option>
+                      {courses.map((course) => (
+                        <option key={course.id} value={course.id}>
+                          {course.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-4 text-sm text-gray-600">
+                  Showing {filteredCampaigns.length} of {campaigns.length} campaigns
+                </div>
+              </CardContent>
+            </Card>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {campaigns.map((campaign) => (
+              {filteredCampaigns.map((campaign) => (
                 <Card key={campaign.id}>
                   <CardHeader>
                     <CardTitle>{campaign.sponsor_name}</CardTitle>
@@ -764,8 +854,16 @@ const AdminDashboard = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600">Status:</span>
-                        <Badge variant="default">Active</Badge>
+                        <Badge variant={getStatusBadgeVariant(campaign.status)}>
+                          {getStatusLabel(campaign.status)}
+                        </Badge>
                       </div>
+                      {campaign.priority && (
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Priority:</span>
+                          <span className="text-sm font-medium">{campaign.priority}</span>
+                        </div>
+                      )}
                       <div className="flex gap-2 mt-4">
                         <Button
                           variant="outline"
