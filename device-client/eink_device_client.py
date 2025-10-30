@@ -844,7 +844,8 @@ class EInkDeviceClient:
             actual_interval = base_interval
             
             if self.next_refresh_at and power_mode in ['normal', 'slow']:
-                now = datetime.now()
+                from datetime import timezone
+                now = datetime.now(timezone.utc)
                 seconds_until_boundary = (self.next_refresh_at - now).total_seconds()
                 
                 if seconds_until_boundary > 0:
@@ -875,7 +876,11 @@ class EInkDeviceClient:
             raise
         except Exception as e:
             logger.error(f"Error during sleep: {e}")
-            time.sleep(60)
+            for _ in range(60):
+                if self.refresh_requested:
+                    logger.info("Waking up early due to refresh request (fallback)")
+                    break
+                time.sleep(1)
 
 def main():
     """Main entry point"""
