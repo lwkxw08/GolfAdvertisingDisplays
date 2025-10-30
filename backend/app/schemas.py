@@ -108,6 +108,8 @@ class SponsorCampaignResponse(SponsorCampaignBase):
     is_active: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
+    status: Optional[str] = None
+    currently_active: Optional[bool] = None
     
     class Config:
         from_attributes = True

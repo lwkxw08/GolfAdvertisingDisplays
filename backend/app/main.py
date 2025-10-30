@@ -422,16 +422,74 @@ async def create_campaign(
     
     return db_campaign
 
+def compute_campaign_status(campaign: SponsorCampaign) -> tuple[str, bool]:
+    """Compute campaign status and currently_active flag"""
+    from .services.eink_device_service import EInkDeviceService
+    
+    now = datetime.utcnow()
+    current_time = now.strftime("%H:%M")
+    current_day = now.strftime("%A").lower()
+    
+    if not campaign.is_active:
+        return "paused", False
+    
+    if now >= campaign.end_date:
+        return "expired", False
+    
+    if now < campaign.start_date:
+        return "scheduled", False
+    
+    service = EInkDeviceService()
+    is_active_now = service._is_campaign_active_now(campaign, current_time, current_day)
+    
+    if is_active_now:
+        return "active_now", True
+    else:
+        return "scheduled", False
+
 @app.get("/admin/campaigns", response_model=List[SponsorCampaignResponse])
 async def list_campaigns(
     device_id: Optional[int] = None,
+    status: Optional[str] = Query(None, description="Filter by status: active_now, scheduled, expired, paused, all"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
     query = db.query(SponsorCampaign)
     if device_id:
         query = query.filter(SponsorCampaign.device_id == device_id)
-    return query.all()
+    
+    campaigns = query.all()
+    
+    result = []
+    for campaign in campaigns:
+        campaign_status, currently_active = compute_campaign_status(campaign)
+        
+        if status and status != "all":
+            if campaign_status != status:
+                continue
+        
+        campaign_dict = {
+            "id": campaign.id,
+            "sponsor_name": campaign.sponsor_name,
+            "device_id": campaign.device_id,
+            "start_date": campaign.start_date,
+            "end_date": campaign.end_date,
+            "start_time": campaign.start_time,
+            "end_time": campaign.end_time,
+            "days_of_week": campaign.days_of_week,
+            "rotation_interval": campaign.rotation_interval,
+            "rotation_unit": campaign.rotation_unit,
+            "priority": campaign.priority,
+            "creative_path": campaign.creative_path,
+            "is_active": campaign.is_active,
+            "created_at": campaign.created_at,
+            "updated_at": campaign.updated_at,
+            "status": campaign_status,
+            "currently_active": currently_active
+        }
+        result.append(campaign_dict)
+    
+    return result
 
 @app.put("/admin/campaigns/{campaign_id}", response_model=SponsorCampaignResponse)
 async def update_campaign(
