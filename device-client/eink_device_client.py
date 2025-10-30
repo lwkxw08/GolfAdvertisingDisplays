@@ -24,9 +24,9 @@ import ssl
 try:
     from waveshare_epd import epd13in3E, epdconfig
     EINK_AVAILABLE = True
-    print("Waveshare E-ink library loaded successfully (pip package)")
-    print(f"epd13in3E module: {epd13in3E.__file__}")
-    print(f"epdconfig module: {epdconfig.__file__}")
+    EINK_SOURCE = "pip"
+    EINK_EPD_PATH = epd13in3E.__file__
+    EINK_CONFIG_PATH = epdconfig.__file__
 except ImportError:
     for path in ['/home/pi/e-Paper/RaspberryPi/python/lib', 
                  '/home/pi/e-Paper/RaspberryPi_JetsonNano/python/lib']:
@@ -38,12 +38,14 @@ except ImportError:
         import epd13in3E
         import epdconfig
         EINK_AVAILABLE = True
-        print("Waveshare E-ink library loaded successfully (local installation)")
-        print(f"epd13in3E module: {epd13in3E.__file__}")
-        print(f"epdconfig module: {epdconfig.__file__}")
+        EINK_SOURCE = "local"
+        EINK_EPD_PATH = epd13in3E.__file__
+        EINK_CONFIG_PATH = epdconfig.__file__
     except ImportError as e:
-        print(f"WARNING: Waveshare E-ink library not found: {e}. Running in simulation mode.")
         EINK_AVAILABLE = False
+        EINK_SOURCE = "none"
+        EINK_EPD_PATH = None
+        EINK_CONFIG_PATH = None
 
 logging.basicConfig(
     level=logging.INFO,
@@ -264,10 +266,16 @@ class EInkDisplayManager:
         self.error_count = 0
         self.is_sleeping = False
         
+        logger.info(f"E-ink library source: {EINK_SOURCE}")
+        if EINK_EPD_PATH:
+            logger.info(f"epd13in3E module path: {EINK_EPD_PATH}")
+            logger.info(f"epdconfig module path: {EINK_CONFIG_PATH}")
+        
         if EINK_AVAILABLE:
             try:
                 self.epd = epd13in3E.EPD()
                 logger.info("E-ink display initialized")
+                logger.info(f"Display methods available: {[m for m in dir(self.epd) if 'display' in m.lower() or 'clear' in m.lower() or 'init' in m.lower()]}")
             except Exception as e:
                 logger.error(f"Failed to initialize E-ink display: {e}")
                 self.epd = None
