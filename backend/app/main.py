@@ -425,18 +425,32 @@ async def create_campaign(
 def compute_campaign_status(campaign: SponsorCampaign) -> tuple[str, bool]:
     """Compute campaign status and currently_active flag"""
     from .services.eink_device_service import EInkDeviceService
+    from datetime import timezone, time as dt_time
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     current_time = now.strftime("%H:%M")
     current_day = now.strftime("%A").lower()
     
     if not campaign.is_active:
         return "paused", False
     
-    if now >= campaign.end_date:
+    def to_aware_datetime(dt_or_date):
+        """Convert date or datetime to timezone-aware datetime"""
+        if isinstance(dt_or_date, datetime):
+            return dt_or_date if dt_or_date.tzinfo else dt_or_date.replace(tzinfo=timezone.utc)
+        elif isinstance(dt_or_date, date):
+            return datetime.combine(dt_or_date, dt_time.min, tzinfo=timezone.utc)
+        return None
+    
+    start_dt = to_aware_datetime(campaign.start_date)
+    end_dt = to_aware_datetime(campaign.end_date)
+    if end_dt:
+        end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+    
+    if end_dt and now >= end_dt:
         return "expired", False
     
-    if now < campaign.start_date:
+    if start_dt and now < start_dt:
         return "scheduled", False
     
     service = EInkDeviceService()
