@@ -99,6 +99,34 @@ enable_spi() {
     fi
 }
 
+configure_hat_plus_gpio() {
+    print_info "Configuring GPIO for HAT+ (E) display..."
+    
+    if [ -f /boot/firmware/config.txt ]; then
+        CONFIG_FILE="/boot/firmware/config.txt"
+    elif [ -f /boot/config.txt ]; then
+        CONFIG_FILE="/boot/config.txt"
+    else
+        print_error "Could not find config.txt file"
+        exit 1
+    fi
+    
+    if grep -q "gpio=7=op,dl" "$CONFIG_FILE" && grep -q "gpio=8=op,dl" "$CONFIG_FILE"; then
+        print_success "HAT+ GPIO configuration already present"
+        return
+    fi
+    
+    print_info "Adding HAT+ GPIO configuration to $CONFIG_FILE..."
+    
+    echo "" | sudo tee -a "$CONFIG_FILE" > /dev/null
+    echo "# HAT+ (E) GPIO configuration for dual-IC chip select" | sudo tee -a "$CONFIG_FILE" > /dev/null
+    echo "gpio=7=op,dl" | sudo tee -a "$CONFIG_FILE" > /dev/null
+    echo "gpio=8=op,dl" | sudo tee -a "$CONFIG_FILE" > /dev/null
+    
+    print_success "HAT+ GPIO configuration added (reboot required)"
+    print_info "These settings configure CS_S (GPIO 7) and CS_M (GPIO 8) for the dual-IC display"
+}
+
 install_eink_library() {
     print_info "Installing Waveshare E-ink library..."
     
@@ -352,6 +380,7 @@ main() {
     check_internet
     install_dependencies
     enable_spi
+    configure_hat_plus_gpio
     install_eink_library
     setup_device_client "$DEVICE_ID"
     create_device_config "$DEVICE_ID"

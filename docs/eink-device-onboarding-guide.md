@@ -50,7 +50,31 @@ This guide provides step-by-step instructions for onboarding new E-ink devices t
    # Expand filesystem
    ```
 
-3. **Install Required Dependencies**
+3. **Configure GPIO for HAT+ (E) Display**
+   
+   **CRITICAL FOR HAT+ MODELS**: The 13.3inch e-Paper HAT+ (E) requires specific GPIO configuration for the dual-IC chip select pins. Without this configuration, the display controller will respond but the panel will not physically refresh.
+   
+   ```bash
+   # Edit the boot config file
+   sudo nano /boot/firmware/config.txt
+   # Or for older Pi OS versions:
+   # sudo nano /boot/config.txt
+   
+   # Add these lines at the end of the file:
+   gpio=7=op,dl
+   gpio=8=op,dl
+   
+   # Save (Ctrl+O, Enter, Ctrl+X) and reboot
+   sudo reboot
+   ```
+   
+   **What these settings do:**
+   - `gpio=7=op,dl` - Sets GPIO 7 (CS_S - Slave chip select) to output mode with pull-down
+   - `gpio=8=op,dl` - Sets GPIO 8 (CS_M - Master chip select) to output mode with pull-down
+   
+   **Note**: The HAT+ (E) uses a dual-IC controller where each IC controls half of the display. These GPIO settings are required for proper chip select operation. Regular HAT (non-plus) models do not require this configuration.
+
+4. **Install Required Dependencies**
    ```bash
    sudo apt update && sudo apt upgrade -y
    sudo apt install python3-pip python3-venv git -y
