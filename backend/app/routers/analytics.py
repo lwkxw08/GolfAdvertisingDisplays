@@ -476,3 +476,149 @@ async def get_analytics_dashboard(
         return dashboard
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating analytics dashboard: {str(e)}")
+
+
+@router.get("/proof-of-play/export")
+async def export_proof_of_play(
+    campaign_id: Optional[int] = Query(None),
+    device_id: Optional[int] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    include_qr_analytics: bool = Query(False),
+    format: str = Query("csv", regex="^(csv|json)$"),
+    current_user: UserResponse = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Export proof-of-play logs with optional QR analytics for sponsor reporting"""
+    try:
+        from ..database import QRScan
+        
+        query = db.query(
+            CampaignDisplayLog,
+            Device.device_id.label('device_external_id'),
+            SponsorCampaign.sponsor_name
+        ).join(
+            Device, CampaignDisplayLog.device_id == Device.id
+        ).outerjoin(
+            SponsorCampaign, CampaignDisplayLog.campaign_id == SponsorCampaign.id
+        )
+        
+        if current_user.role.value != "admin" and current_user.course_id:
+            query = query.filter(Device.course_id == current_user.course_id)
+        
+        if campaign_id:
+            query = query.filter(CampaignDisplayLog.campaign_id == campaign_id)
+        if device_id:
+            query = query.filter(CampaignDisplayLog.device_id == device_id)
+        if start_date:
+            query = query.filter(func.date(CampaignDisplayLog.displayed_at) >= start_date)
+        if end_date:
+            query = query.filter(func.date(CampaignDisplayLog.displayed_at) <= end_date)
+        
+        logs = query.order_by(CampaignDisplayLog.displayed_at.desc()).limit(10000).all()
+        
+        qr_data = {}
+        if include_qr_analytics:
+            qr_query = db.query(
+                QRScan.campaign_id,
+                func.count(QRScan.id).label('scan_count')
+            ).join(
+                Device, QRScan.device_id == Device.id
+            )
+            
+            if current_user.role.value != "admin" and current_user.course_id:
+                qr_query = qr_query.filter(Device.course_id == current_user.course_id)
+            
+            if campaign_id:
+                qr_query = qr_query.filter(QRScan.campaign_id == campaign_id)
+            if device_id:
+                qr_query = qr_query.filter(QRScan.device_id == device_id)
+            if start_date:
+                qr_query = qr_query.filter(func.date(QRScan.scanned_at) >= start_date)
+            if end_date:
+                qr_query = qr_query.filter(func.date(QRScan.scanned_at) <= end_date)
+            
+            qr_results = qr_query.group_by(QRScan.campaign_id).all()
+            qr_data = {r.campaign_id: r.scan_count for r in qr_results}
+        
+        if format == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            headers = [
+                'Event ID', 'Campaign ID', 'Campaign Name', 'Device ID', 'Device Name',
+                'Content Type', 'Displayed At', 'Ended At', 'Duration (seconds)',
+                'Image Hash', 'Hash Algorithm', 'Creative URL', 'Render Success',
+                'Connectivity', 'Power Mode', 'Firmware Version'
+            ]
+            if include_qr_analytics:
+                headers.append('QR Scans')
+            
+            writer.writerow(headers)
+            
+            for log, device_external_id, sponsor_name in logs:
+                row = [
+                    log.event_id,
+                    log.campaign_id or '',
+                    sponsor_name or '',
+                    log.device_id,
+                    device_external_id or '',
+                    log.content_type,
+                    log.displayed_at.isoformat() if log.displayed_at else '',
+                    log.ended_at.isoformat() if log.ended_at else '',
+                    log.duration_seconds or '',
+                    log.image_hash,
+                    log.hash_algo,
+                    log.creative_url or '',
+                    'Yes' if log.render_result else 'No',
+                    log.connectivity_type or '',
+                    log.power_mode or '',
+                    log.firmware_version or ''
+                ]
+                if include_qr_analytics:
+                    row.append(qr_data.get(log.campaign_id, 0) if log.campaign_id else 0)
+                
+                writer.writerow(row)
+            
+            filename = f"proof_of_play_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            return StreamingResponse(
+                iter([output.getvalue()]),
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+        else:
+            import json
+            data = []
+            for log, device_external_id, sponsor_name in logs:
+                item = {
+                    'event_id': log.event_id,
+                    'campaign_id': log.campaign_id,
+                    'campaign_name': sponsor_name,
+                    'device_id': log.device_id,
+                    'device_external_id': device_external_id,
+                    'content_type': log.content_type,
+                    'displayed_at': log.displayed_at.isoformat() if log.displayed_at else None,
+                    'ended_at': log.ended_at.isoformat() if log.ended_at else None,
+                    'duration_seconds': log.duration_seconds,
+                    'image_hash': log.image_hash,
+                    'hash_algo': log.hash_algo,
+                    'creative_url': log.creative_url,
+                    'render_result': log.render_result,
+                    'connectivity_type': log.connectivity_type,
+                    'power_mode': log.power_mode,
+                    'firmware_version': log.firmware_version
+                }
+                if include_qr_analytics:
+                    item['qr_scans'] = qr_data.get(log.campaign_id, 0) if log.campaign_id else 0
+                
+                data.append(item)
+            
+            filename = f"proof_of_play_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            return StreamingResponse(
+                iter([json.dumps(data, indent=2)]),
+                media_type="application/json",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error exporting proof-of-play data: {str(e)}")
