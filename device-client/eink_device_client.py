@@ -624,14 +624,14 @@ class EInkDeviceClient:
         logger.info("Command polling thread started")
     
     def _poll_commands_loop(self):
-        """Background loop to poll for remote commands"""
+        """Background loop to poll for remote commands as fallback to WebSocket"""
         while self.running:
             try:
-                time.sleep(15)
+                time.sleep(30)
                 self._check_and_execute_commands()
             except Exception as e:
                 logger.error(f"Error in command polling loop: {e}")
-                time.sleep(30)
+                time.sleep(60)
     
     def _check_and_execute_commands(self):
         """Check for pending commands and execute them"""
