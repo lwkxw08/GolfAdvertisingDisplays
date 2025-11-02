@@ -422,6 +422,87 @@ const DeviceMonitoringDashboard: React.FC = () => {
                             Error: {deviceCommands[device.device_id][0].error_message}
                           </div>
                         )}
+                        
+                        {deviceCommands[device.device_id][0].command_type === 'get_diagnostics' && 
+                         deviceCommands[device.device_id][0].status === 'completed' &&
+                         deviceCommands[device.device_id][0].result?.diagnostics && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <div className="text-xs font-semibold text-gray-700 mb-2">Device Diagnostics</div>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div className="flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-blue-500" />
+                                <span className="text-gray-600">Uptime:</span>
+                                <span className="font-medium">
+                                  {Math.floor(deviceCommands[device.device_id][0].result.diagnostics.uptime_hours)}h
+                                </span>
+                              </div>
+                              
+                              <div className="flex items-center gap-1">
+                                <Battery className={`w-3 h-3 ${
+                                  deviceCommands[device.device_id][0].result.diagnostics.power?.battery_level > 50 ? 'text-green-500' :
+                                  deviceCommands[device.device_id][0].result.diagnostics.power?.battery_level > 20 ? 'text-yellow-500' :
+                                  'text-red-500'
+                                }`} />
+                                <span className="text-gray-600">Battery:</span>
+                                <span className="font-medium">
+                                  {Math.round(deviceCommands[device.device_id][0].result.diagnostics.power?.battery_level || 0)}%
+                                </span>
+                              </div>
+                              
+                              <div className="flex items-center gap-1">
+                                <Wifi className={`w-3 h-3 ${
+                                  deviceCommands[device.device_id][0].result.diagnostics.connectivity?.current_connection === 'wifi' ? 'text-green-500' :
+                                  deviceCommands[device.device_id][0].result.diagnostics.connectivity?.current_connection === 'lte' ? 'text-blue-500' :
+                                  'text-gray-400'
+                                }`} />
+                                <span className="text-gray-600">Connection:</span>
+                                <span className="font-medium capitalize">
+                                  {deviceCommands[device.device_id][0].result.diagnostics.connectivity?.current_connection || 'None'}
+                                </span>
+                              </div>
+                              
+                              <div className="flex items-center gap-1">
+                                <Activity className={`w-3 h-3 ${
+                                  deviceCommands[device.device_id][0].result.diagnostics.power?.charging ? 'text-green-500' : 'text-gray-400'
+                                }`} />
+                                <span className="text-gray-600">Charging:</span>
+                                <span className="font-medium">
+                                  {deviceCommands[device.device_id][0].result.diagnostics.power?.charging ? 'Yes' : 'No'}
+                                </span>
+                              </div>
+                              
+                              <div className="flex items-center gap-1">
+                                <HardDrive className={`w-3 h-3 ${
+                                  deviceCommands[device.device_id][0].result.diagnostics.display?.display_available ? 'text-green-500' : 'text-red-500'
+                                }`} />
+                                <span className="text-gray-600">Display:</span>
+                                <span className="font-medium">
+                                  {deviceCommands[device.device_id][0].result.diagnostics.display?.display_available ? 'OK' : 'Error'}
+                                </span>
+                              </div>
+                              
+                              <div className="flex items-center gap-1">
+                                <RefreshCw className="w-3 h-3 text-blue-500" />
+                                <span className="text-gray-600">Refreshes:</span>
+                                <span className="font-medium">
+                                  {deviceCommands[device.device_id][0].result.diagnostics.display?.refresh_count || 0}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            {deviceCommands[device.device_id][0].result.diagnostics.last_sync && (
+                              <div className="mt-2 text-xs text-gray-500">
+                                Last sync: {new Date(deviceCommands[device.device_id][0].result.diagnostics.last_sync).toLocaleString()}
+                              </div>
+                            )}
+                            
+                            {deviceCommands[device.device_id][0].result.diagnostics.sync_errors > 0 && (
+                              <div className="mt-2 text-xs text-red-600">
+                                ⚠️ {deviceCommands[device.device_id][0].result.diagnostics.sync_errors} sync error(s)
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
