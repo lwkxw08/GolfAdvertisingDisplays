@@ -2,7 +2,7 @@
 set -e
 
 
-SCRIPT_VERSION="2.0.0"
+SCRIPT_VERSION="2.1.0"
 API_BASE_URL="https://golfadvertisingdisplays.onrender.com"
 REPO_BRANCH="devin/1727000056-supabase-migration"
 DEVICE_CLIENT_URL="https://raw.githubusercontent.com/lwkxw08/GolfAdvertisingDisplays/${REPO_BRANCH}/device-client/eink_device_client.py"
@@ -63,7 +63,7 @@ install_dependencies() {
     
     sudo apt update -qq
     
-    PACKAGES="python3-pip python3-venv git python3-pil python3-numpy network-manager modemmanager"
+    PACKAGES="python3-pip python3-venv git python3-pil python3-numpy python3-websocket network-manager modemmanager"
     MISSING_PACKAGES=""
     
     for pkg in $PACKAGES; do
@@ -79,6 +79,8 @@ install_dependencies() {
     else
         print_success "All system dependencies already installed"
     fi
+    
+    print_success "WebSocket support installed for command queue features"
 }
 
 enable_spi() {
@@ -181,7 +183,9 @@ setup_device_client() {
     print_info "Installing Python dependencies..."
     source venv/bin/activate
     pip install -q --upgrade pip
-    pip install -q requests pillow psutil websocket-client spidev RPi.GPIO gpiozero numpy
+    
+    # Install core dependencies
+    pip install -q requests pillow psutil spidev RPi.GPIO gpiozero numpy
     
     print_info "Installing Waveshare epd drivers in venv..."
     mkdir -p venv/lib/python*/site-packages/waveshare_epd
@@ -343,6 +347,13 @@ display_completion() {
     echo ""
     echo "Device ID: $device_id"
     echo "API URL: $API_BASE_URL"
+    echo "Branch: $REPO_BRANCH"
+    echo ""
+    echo "Features Enabled:"
+    echo "  ✓ Command Queue with Acknowledgment System"
+    echo "  ✓ WebSocket real-time notifications"
+    echo "  ✓ Automatic retry logic for command reporting"
+    echo "  ✓ Resilient to backend restarts and network issues"
     echo ""
     echo "IMPORTANT: After reboot, start the service with:"
     echo "  sudo systemctl start eink-device.service"
