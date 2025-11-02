@@ -114,32 +114,40 @@ const DeviceMonitoringDashboard: React.FC = () => {
       }
 
       const command = await apiClient.issueRemoteCommand(deviceId, { command_type: commandType });
+      console.log(`Command issued: ${commandType} (ID: ${command.id}) for device ${deviceId}`);
       setError('');
       
       setPendingCommands(prev => ({ ...prev, [deviceId]: command.id }));
       
       pollCommandStatus(deviceId, command.id);
     } catch (err: any) {
+      console.error('Failed to issue command:', err);
       setError(err.message || 'Failed to issue command');
     }
   };
 
   const pollCommandStatus = async (deviceId: number, commandId: number) => {
-    const maxAttempts = 60; // Poll for up to 60 seconds
+    const maxAttempts = 60;
     let attempts = 0;
+    let retryDelay = 1000;
 
     const poll = async () => {
+      attempts++;
+      
       try {
         const commands = await apiClient.getDeviceCommands(deviceId);
         const command = commands.find((cmd: DeviceCommand) => cmd.id === commandId);
 
         if (command) {
+          console.log(`Command ${commandId} status: ${command.status} (attempt ${attempts}/${maxAttempts})`);
+          
           setDeviceCommands(prev => ({
             ...prev,
             [deviceId]: [command, ...(prev[deviceId] || []).filter(c => c.id !== commandId)].slice(0, 5)
           }));
 
           if (command.status === 'completed' || command.status === 'failed') {
+            console.log(`Command ${commandId} finished with status: ${command.status}`);
             setPendingCommands(prev => {
               const updated = { ...prev };
               delete updated[deviceId];
@@ -147,11 +155,12 @@ const DeviceMonitoringDashboard: React.FC = () => {
             });
             return;
           }
+        } else {
+          console.warn(`Command ${commandId} not found in response (attempt ${attempts}/${maxAttempts})`);
         }
 
-        attempts++;
         if (attempts < maxAttempts) {
-          setTimeout(poll, 1000); // Poll every second
+          setTimeout(poll, 1000);
         } else {
           setPendingCommands(prev => {
             const updated = { ...prev };
@@ -160,7 +169,18 @@ const DeviceMonitoringDashboard: React.FC = () => {
           });
         }
       } catch (err) {
-        console.error('Failed to poll command status:', err);
+        console.error(`Failed to poll command status (attempt ${attempts}/${maxAttempts}):`, err);
+        
+        if (attempts < maxAttempts) {
+          retryDelay = Math.min(retryDelay * 1.5, 5000);
+          setTimeout(poll, retryDelay);
+        } else {
+          setPendingCommands(prev => {
+            const updated = { ...prev };
+            delete updated[deviceId];
+            return updated;
+          });
+        }
       }
     };
 
