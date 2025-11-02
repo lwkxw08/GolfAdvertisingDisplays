@@ -387,8 +387,12 @@ async def get_pending_commands_by_external_id(
     db: Session = Depends(get_db)
 ):
     """Get pending commands for a device by external device_id (called by device client)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     device = db.query(Device).filter(Device.device_id == external_device_id).first()
     if not device:
+        logger.warning(f"Device not found with external_device_id: {external_device_id}")
         raise HTTPException(status_code=404, detail="Device not found")
     
     commands = db.query(DeviceRemoteCommand).filter(
@@ -396,10 +400,16 @@ async def get_pending_commands_by_external_id(
         DeviceRemoteCommand.status == CommandStatus.PENDING
     ).order_by(DeviceRemoteCommand.issued_at.asc()).all()
     
-    for cmd in commands:
-        cmd.status = CommandStatus.EXECUTING
-    
-    db.commit()
+    if commands:
+        logger.info(f"Device {external_device_id} polling: found {len(commands)} pending command(s), updating to EXECUTING")
+        for cmd in commands:
+            logger.info(f"  Command {cmd.id}: {cmd.command_type} (issued at {cmd.issued_at})")
+            cmd.status = CommandStatus.EXECUTING
+            cmd.picked_up_at = datetime.now(timezone.utc)
+        
+        db.commit()
+    else:
+        logger.debug(f"Device {external_device_id} polling: no pending commands")
     
     return commands
 
@@ -431,16 +441,27 @@ async def update_command_result_by_device(
     db: Session = Depends(get_db)
 ):
     """Update command execution result by device (called by device client using external ID)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     command = db.query(DeviceRemoteCommand).filter(DeviceRemoteCommand.id == command_id).first()
     if not command:
+        logger.error(f"Command {command_id} not found when trying to update result")
         raise HTTPException(status_code=404, detail="Command not found")
     
-    command.status = CommandStatus.COMPLETED if result.get("success") else CommandStatus.FAILED
+    old_status = command.status
+    new_status = CommandStatus.COMPLETED if result.get("success") else CommandStatus.FAILED
+    
+    logger.info(f"Updating command {command_id} status: {old_status} → {new_status}, success={result.get('success')}")
+    
+    command.status = new_status
     command.executed_at = datetime.now(timezone.utc)
     command.result = result
     command.error_message = result.get("error")
     
     db.commit()
     db.refresh(command)
+    
+    logger.info(f"Command {command_id} result updated successfully")
     
     return command
