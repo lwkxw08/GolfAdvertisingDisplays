@@ -677,10 +677,15 @@ class EInkDeviceClient:
             
             elif command_type == "reboot":
                 try:
-                    subprocess.run(['sudo', 'reboot'], check=True, timeout=5)
-                    return {"success": True, "message": "Reboot initiated"}
-                except subprocess.CalledProcessError:
-                    return {"success": False, "error": "Reboot failed - insufficient privileges"}
+                    def delayed_reboot():
+                        time.sleep(3)
+                        subprocess.run(['sudo', 'reboot'], check=True)
+                    
+                    reboot_thread = threading.Thread(target=delayed_reboot)
+                    reboot_thread.daemon = True
+                    reboot_thread.start()
+                    
+                    return {"success": True, "message": "Reboot scheduled in 3 seconds"}
                 except Exception as e:
                     return {"success": False, "error": f"Reboot failed: {str(e)}"}
             
