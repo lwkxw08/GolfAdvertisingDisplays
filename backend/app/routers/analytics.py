@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
 from datetime import date, datetime, timedelta
-from ..database import get_db, RevenueConfiguration, SavedReport, ReportExport
+from ..database import get_db, RevenueConfiguration, SavedReport, ReportExport, CampaignDisplayLog, Device, SponsorCampaign
 from ..auth import get_current_user, require_admin
 from ..schemas import (
     CampaignPerformanceReport, DeviceUptimeReport, RevenueReport,
@@ -14,6 +16,8 @@ from ..schemas import (
 from ..services.analytics_service import analytics_service
 import tempfile
 import os
+import csv
+import io
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
