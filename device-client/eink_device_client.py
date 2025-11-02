@@ -588,12 +588,33 @@ class EInkDeviceClient:
             for old_id in oldest_ids:
                 self.executed_command_ids.remove(old_id)
         
-        try:
-            result_url = f"{self.api_base_url}/api/device/commands/{command_id}/result"
-            requests.put(result_url, json=result, timeout=10)
-            logger.info(f"WebSocket command {command_type} completed: {result.get('success')}")
-        except Exception as e:
-            logger.error(f"Failed to report WebSocket command result: {e}")
+        self._report_command_result_with_retry(command_id, result)
+    
+    def _report_command_result_with_retry(self, command_id: int, result: Dict[str, Any]):
+        """Report command result with retry logic"""
+        max_retries = 5
+        retry_delays = [1, 2, 5, 10, 30]
+        
+        for attempt in range(max_retries):
+            try:
+                result_url = f"{self.api_base_url}/api/device/commands/{command_id}/result"
+                response = requests.put(result_url, json=result, timeout=10)
+                
+                if response.status_code == 200:
+                    logger.info(f"Command {command_id} result reported successfully: {result.get('success')}")
+                    return
+                else:
+                    logger.warning(f"Command {command_id} result report failed with status {response.status_code} (attempt {attempt + 1}/{max_retries})")
+                    
+            except Exception as e:
+                logger.error(f"Failed to report command {command_id} result (attempt {attempt + 1}/{max_retries}): {e}")
+            
+            if attempt < max_retries - 1:
+                delay = retry_delays[attempt]
+                logger.info(f"Retrying command {command_id} result report in {delay} seconds...")
+                time.sleep(delay)
+        
+        logger.error(f"Failed to report command {command_id} result after {max_retries} attempts")
     
     def _start_command_polling(self):
         """Start background thread for polling remote commands"""
@@ -629,8 +650,7 @@ class EInkDeviceClient:
                 
                 if command_id in self.executed_command_ids:
                     logger.info(f"Command {command_id} already executed via WebSocket, skipping")
-                    result_url = f"{self.api_base_url}/api/device/commands/{command_id}/result"
-                    requests.put(result_url, json={"success": True, "message": "Already executed via WebSocket"}, timeout=10)
+                    self._report_command_result_with_retry(command_id, {"success": True, "message": "Already executed via WebSocket"})
                     continue
                 
                 logger.info(f"Executing remote command: {command_type} (ID: {command_id})")
@@ -643,10 +663,7 @@ class EInkDeviceClient:
                     for old_id in oldest_ids:
                         self.executed_command_ids.remove(old_id)
                 
-                result_url = f"{self.api_base_url}/api/device/commands/{command_id}/result"
-                requests.put(result_url, json=result, timeout=10)
-                
-                logger.info(f"Command {command_type} completed: {result.get('success')}")
+                self._report_command_result_with_retry(command_id, result)
                 
         except Exception as e:
             logger.error(f"Failed to check/execute commands: {e}")
