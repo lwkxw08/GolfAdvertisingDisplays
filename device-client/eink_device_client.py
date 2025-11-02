@@ -95,7 +95,7 @@ class ConnectivityManager:
                     logger.warning("No connectivity available")
                 
                 status = {
-                    'timestamp': datetime.now(),
+                    'timestamp': datetime.now().isoformat(),
                     'current_connection': self.current_connection,
                     'wifi': wifi_status,
                     'lte': lte_status
@@ -186,7 +186,7 @@ class ConnectivityManager:
             return self.connection_queue.get_nowait()
         except queue.Empty:
             return {
-                'timestamp': datetime.now(),
+                'timestamp': datetime.now().isoformat(),
                 'current_connection': self.current_connection,
                 'wifi': {'connected': False},
                 'lte': {'connected': False}
