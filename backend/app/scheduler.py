@@ -1,10 +1,12 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from datetime import datetime, timedelta
+from apscheduler.triggers.cron import CronTrigger
+from datetime import datetime, timedelta, date
+from sqlalchemy import func
 import logging
 import asyncio
 
-from .database import SessionLocal, SponsorCampaign, Notice, Device
+from .database import SessionLocal, SponsorCampaign, Notice, Device, CampaignDisplayLog, CampaignAnalytics
 from .services.eink_device_service import eink_device_service
 from .services.command_service import CommandService
 
@@ -22,6 +24,58 @@ def cleanup_stuck_commands():
             logger.info(f"Cleaned up {result['total']} stuck commands (pending: {result['pending_timeout']}, executing: {result['executing_timeout']})")
     except Exception as e:
         logger.error(f"Error in scheduled command cleanup: {e}")
+    finally:
+        db.close()
+
+def aggregate_proof_of_play():
+    """Nightly job to aggregate proof-of-play logs into campaign_analytics"""
+    db = SessionLocal()
+    try:
+        yesterday = date.today() - timedelta(days=1)
+        logger.info(f"Running proof-of-play aggregation for {yesterday}...")
+        
+        logs = db.query(
+            CampaignDisplayLog.campaign_id,
+            CampaignDisplayLog.device_id,
+            func.count(CampaignDisplayLog.id).label('impressions'),
+            func.sum(CampaignDisplayLog.duration_seconds).label('total_duration')
+        ).filter(
+            func.date(CampaignDisplayLog.displayed_at) == yesterday,
+            CampaignDisplayLog.campaign_id.isnot(None),
+            CampaignDisplayLog.content_type == 'campaign'
+        ).group_by(
+            CampaignDisplayLog.campaign_id,
+            CampaignDisplayLog.device_id
+        ).all()
+        
+        for log in logs:
+            analytics = db.query(CampaignAnalytics).filter(
+                CampaignAnalytics.campaign_id == log.campaign_id,
+                CampaignAnalytics.device_id == log.device_id,
+                CampaignAnalytics.date == yesterday
+            ).first()
+            
+            if analytics:
+                analytics.impressions = log.impressions
+                analytics.display_duration_seconds = log.total_duration or 0
+                analytics.rotation_count = log.impressions
+            else:
+                analytics = CampaignAnalytics(
+                    campaign_id=log.campaign_id,
+                    device_id=log.device_id,
+                    date=yesterday,
+                    impressions=log.impressions,
+                    display_duration_seconds=log.total_duration or 0,
+                    rotation_count=log.impressions
+                )
+                db.add(analytics)
+        
+        db.commit()
+        logger.info(f"Aggregated {len(logs)} campaign analytics entries for {yesterday}")
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error in proof-of-play aggregation: {e}")
     finally:
         db.close()
 
@@ -131,8 +185,15 @@ def start_scheduler():
             name='Cleanup stuck/timed-out commands',
             replace_existing=True
         )
+        scheduler.add_job(
+            aggregate_proof_of_play,
+            trigger=CronTrigger(hour=2, minute=0),
+            id='aggregate_proof_of_play',
+            name='Aggregate proof-of-play logs into campaign analytics',
+            replace_existing=True
+        )
         scheduler.start()
-        logger.info("Background scheduler started - checking device status every 5 minutes, campaign/notice events every minute, and command cleanup every 2 minutes")
+        logger.info("Background scheduler started - device status (5min), campaign events (1min), command cleanup (2min), proof-of-play aggregation (daily 2am)")
 
 def shutdown_scheduler():
     """Shutdown the background scheduler"""

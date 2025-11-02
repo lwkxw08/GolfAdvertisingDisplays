@@ -109,6 +109,8 @@ class EInkDeviceService:
                     'content': campaign.creative_path,
                     'sponsor_name': campaign.sponsor_name,
                     'priority': campaign.priority,
+                    'rotation_interval': campaign.rotation_interval,
+                    'rotation_unit': campaign.rotation_unit.value,
                     'eink_optimized': True
                 }
                 

@@ -12,7 +12,7 @@ from typing import List, Optional, Dict, Any
 from ..database import (
     get_db, Device, DeviceHealthMetric, DeviceAlert, AlertNotification,
     DeviceRemoteCommand, AlertType, AlertSeverity, NotificationStatus,
-    CommandStatus, User, UserRole
+    CommandStatus, User, UserRole, CampaignDisplayLog
 )
 from ..auth import require_tenant_access, require_admin
 from .. import schemas
@@ -465,3 +465,84 @@ async def update_command_result_by_device(
     logger.info(f"Command {command_id} result updated successfully")
     
     return command
+
+
+@router.post("/device/{device_id}/proof_of_play/batch", response_model=schemas.ProofOfPlayBatchResponse)
+async def ingest_proof_of_play_batch(
+    device_id: str,
+    batch: schemas.ProofOfPlayBatch,
+    db: Session = Depends(get_db)
+):
+    """Ingest batch of proof-of-play events from device"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    device = db.query(Device).filter(Device.device_id == device_id).first()
+    if not device:
+        logger.error(f"Device {device_id} not found for proof-of-play ingestion")
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    accepted = []
+    duplicates = []
+    errors = []
+    
+    logger.info(f"Ingesting {len(batch.events)} proof-of-play events from device {device_id}")
+    
+    for event in batch.events:
+        try:
+            existing = db.query(CampaignDisplayLog).filter(
+                CampaignDisplayLog.event_id == event.event_id
+            ).first()
+            
+            if existing:
+                duplicates.append(event.event_id)
+                logger.debug(f"Duplicate event {event.event_id} skipped")
+                continue
+            
+            duration = None
+            if event.ended_at and event.displayed_at:
+                duration = int((event.ended_at - event.displayed_at).total_seconds())
+            elif event.duration_seconds:
+                duration = event.duration_seconds
+            
+            log = CampaignDisplayLog(
+                event_id=event.event_id,
+                device_id=device.id,
+                campaign_id=event.campaign_id,
+                content_type=event.content_type,
+                displayed_at=event.displayed_at,
+                ended_at=event.ended_at,
+                duration_seconds=duration,
+                image_hash=event.image_hash,
+                hash_algo=event.hash_algo or 'sha256',
+                creative_url=event.creative_url,
+                render_result=event.render_result,
+                connectivity_type=event.connectivity_type,
+                power_mode=event.power_mode,
+                firmware_version=event.firmware_version
+            )
+            db.add(log)
+            accepted.append(event.event_id)
+            
+        except Exception as e:
+            logger.error(f"Error ingesting event {event.event_id}: {e}")
+            errors.append({"event_id": event.event_id, "error": str(e)})
+    
+    try:
+        db.commit()
+        logger.info(f"Proof-of-play batch ingestion complete: {len(accepted)} accepted, {len(duplicates)} duplicates, {len(errors)} errors")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to commit proof-of-play batch: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to commit batch: {str(e)}")
+    
+    return {
+        "accepted": len(accepted),
+        "duplicates": len(duplicates),
+        "errors": len(errors),
+        "details": {
+            "accepted_ids": accepted,
+            "duplicate_ids": duplicates,
+            "errors": errors
+        }
+    }

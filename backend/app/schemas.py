@@ -770,3 +770,60 @@ class QRCodePerformanceReport(BaseModel):
     scans_by_date: List[Dict[str, Any]]
     date_range_start: date
     date_range_end: date
+
+class ProofOfPlayEvent(BaseModel):
+    """Single proof-of-play event from device"""
+    event_id: str
+    campaign_id: Optional[int] = None
+    content_type: str  # 'campaign' or 'notice'
+    displayed_at: datetime
+    ended_at: Optional[datetime] = None
+    duration_seconds: Optional[int] = None
+    image_hash: str
+    hash_algo: Optional[str] = 'sha256'
+    creative_url: Optional[str] = None
+    render_result: bool
+    connectivity_type: Optional[str] = None
+    power_mode: Optional[str] = None
+    firmware_version: Optional[str] = None
+
+class ProofOfPlayBatch(BaseModel):
+    """Batch of proof-of-play events from device"""
+    events: List[ProofOfPlayEvent]
+
+class ProofOfPlayBatchResponse(BaseModel):
+    """Response from batch ingestion"""
+    accepted: int
+    duplicates: int
+    errors: int
+    details: Dict[str, Any]
+
+class CampaignDisplayLogResponse(BaseModel):
+    """Single proof-of-play log entry"""
+    id: int
+    event_id: str
+    device_id: int
+    campaign_id: Optional[int]
+    content_type: str
+    displayed_at: datetime
+    ended_at: Optional[datetime]
+    duration_seconds: Optional[int]
+    image_hash: str
+    hash_algo: str
+    creative_url: Optional[str]
+    render_result: bool
+    connectivity_type: Optional[str]
+    power_mode: Optional[str]
+    firmware_version: Optional[str]
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class ProofOfPlayExportRequest(BaseModel):
+    """Request parameters for proof-of-play export"""
+    campaign_id: Optional[int] = None
+    device_id: Optional[int] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    format: str = "csv"  # csv or json

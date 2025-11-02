@@ -498,6 +498,34 @@ class CampaignAnalytics(Base):
         Index('idx_campaign_analytics_date', 'date'),
     )
 
+class CampaignDisplayLog(Base):
+    """Proof-of-Play logging: immutable record of every campaign display"""
+    __tablename__ = "campaign_display_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(String(36), unique=True, nullable=False, index=True)  # UUID for idempotency
+    device_id = Column(Integer, ForeignKey("devices.id"), nullable=False, index=True)
+    campaign_id = Column(Integer, ForeignKey("sponsor_campaigns.id"), nullable=True, index=True)
+    content_type = Column(String(20), nullable=False)  # 'campaign' or 'notice'
+    displayed_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    ended_at = Column(DateTime(timezone=True), nullable=True)
+    duration_seconds = Column(Integer, nullable=True)
+    image_hash = Column(String(64), nullable=False)  # SHA-256 hash of displayed image
+    hash_algo = Column(String(10), default='sha256')
+    creative_url = Column(Text, nullable=True)
+    render_result = Column(Boolean, nullable=False)  # Did display succeed?
+    connectivity_type = Column(String(20), nullable=True)  # wifi/lte/none
+    power_mode = Column(String(20), nullable=True)  # fast/normal/slow/deep_sleep
+    firmware_version = Column(String(50), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    device = relationship("Device")
+    campaign = relationship("SponsorCampaign")
+    
+    __table_args__ = (
+        Index('idx_display_logs_campaign_date', 'campaign_id', 'displayed_at'),
+    )
+
 class DeviceUptimeLog(Base):
     __tablename__ = "device_uptime_logs"
     
