@@ -11,7 +11,7 @@ import json
 import logging
 import requests
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 from PIL import Image
 import psutil
@@ -19,6 +19,8 @@ import threading
 import queue
 import websocket
 import ssl
+import hashlib
+import uuid
 
 try:
     from waveshare_epd import epd13in3E, epdconfig
@@ -503,6 +505,12 @@ class EInkDeviceClient:
         self.command_polling_thread = None
         self.executed_command_ids = set()
         
+        self.pop_queue_file = '/var/lib/eink_device/proof_of_play_queue.jsonl'
+        self.pop_max_queue_size = 50 * 1024 * 1024
+        self.current_display_event = None
+        self.pop_flush_thread = None
+        self._ensure_pop_queue_dir()
+        
         logger.info(f"E-ink device client initialized for device: {self.device_id}")
     
     def _load_config(self, config_file: str) -> Dict[str, Any]:
@@ -528,6 +536,14 @@ class EInkDeviceClient:
         
         return default_config
     
+    def _ensure_pop_queue_dir(self):
+        """Ensure proof-of-play queue directory exists"""
+        try:
+            queue_dir = os.path.dirname(self.pop_queue_file)
+            os.makedirs(queue_dir, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Failed to create proof-of-play queue directory: {e}")
+    
     def start(self):
         """Start the device client"""
         logger.info("Starting E-ink device client...")
@@ -539,6 +555,7 @@ class EInkDeviceClient:
         self.connectivity.start_monitoring()
         self.websocket_manager.start()
         self._start_command_polling()
+        self._start_pop_flushing()
         
         self.running = True
         try:
@@ -558,10 +575,14 @@ class EInkDeviceClient:
         """Stop the device client"""
         logger.info("Stopping E-ink device client...")
         self.running = False
+        self._close_current_display_event()
+        self._flush_pop_events()
         self.connectivity.stop_monitoring()
         self.websocket_manager.stop()
         if self.command_polling_thread:
             self.command_polling_thread.join(timeout=5)
+        if self.pop_flush_thread:
+            self.pop_flush_thread.join(timeout=5)
         self.display.sleep()
         logger.info("Device client stopped")
     
@@ -842,7 +863,26 @@ class EInkDeviceClient:
                 if image_url:
                     image_path = self._download_image(image_url)
                     if image_path:
+                        self._close_current_display_event()
+                        
+                        image_hash = self._compute_image_hash(image_path)
+                        
                         success = self.display.display_image(image_path)
+                        
+                        self.current_display_event = {
+                            'event_id': str(uuid.uuid4()),
+                            'campaign_id': item.get('id'),
+                            'content_type': 'campaign',
+                            'displayed_at': datetime.now(timezone.utc).isoformat(),
+                            'image_hash': image_hash,
+                            'hash_algo': 'sha256',
+                            'creative_url': image_url,
+                            'render_result': success,
+                            'connectivity_type': connectivity_type,
+                            'power_mode': self.power.get_power_mode(),
+                            'firmware_version': self.config.get('firmware_version', '2.2.0')
+                        }
+                        
                         try:
                             os.remove(image_path)
                         except:
@@ -899,7 +939,100 @@ class EInkDeviceClient:
             raise
         except Exception as e:
             logger.error(f"Error during sleep: {e}")
-            time.sleep(60)  # Fallback sleep
+            time.sleep(60)
+    
+    def _compute_image_hash(self, image_path: str) -> str:
+        """Compute SHA-256 hash of image file"""
+        try:
+            with open(image_path, 'rb') as f:
+                return hashlib.sha256(f.read()).hexdigest()
+        except Exception as e:
+            logger.error(f"Failed to compute image hash: {e}")
+            return "error"
+    
+    def _record_display_event(self, event_data: Dict[str, Any]):
+        """Record display event to local queue"""
+        try:
+            with open(self.pop_queue_file, 'a') as f:
+                f.write(json.dumps(event_data) + '\n')
+            logger.debug(f"Recorded proof-of-play event: {event_data['event_id']}")
+        except Exception as e:
+            logger.error(f"Failed to record proof-of-play event: {e}")
+    
+    def _close_current_display_event(self):
+        """Close the current display event with end time"""
+        if self.current_display_event:
+            try:
+                self.current_display_event['ended_at'] = datetime.now(timezone.utc).isoformat()
+                self.current_display_event['duration_seconds'] = int(
+                    (datetime.fromisoformat(self.current_display_event['ended_at'].replace('Z', '+00:00')) -
+                     datetime.fromisoformat(self.current_display_event['displayed_at'].replace('Z', '+00:00'))).total_seconds()
+                )
+                self._record_display_event(self.current_display_event)
+                logger.debug(f"Closed display event: {self.current_display_event['event_id']}")
+                self.current_display_event = None
+            except Exception as e:
+                logger.error(f"Failed to close display event: {e}")
+    
+    def _start_pop_flushing(self):
+        """Start background thread to flush proof-of-play events"""
+        if not self.pop_flush_thread or not self.pop_flush_thread.is_alive():
+            self.pop_flush_thread = threading.Thread(target=self._pop_flush_loop, daemon=True)
+            self.pop_flush_thread.start()
+            logger.info("Proof-of-play flush thread started")
+    
+    def _pop_flush_loop(self):
+        """Background loop to flush proof-of-play events"""
+        while self.running:
+            try:
+                time.sleep(60)
+                self._flush_pop_events()
+            except Exception as e:
+                logger.error(f"Error in proof-of-play flush loop: {e}")
+                time.sleep(60)
+    
+    def _flush_pop_events(self):
+        """Send queued proof-of-play events to backend"""
+        try:
+            if not os.path.exists(self.pop_queue_file):
+                return
+            
+            events = []
+            with open(self.pop_queue_file, 'r') as f:
+                for line in f:
+                    try:
+                        event = json.loads(line.strip())
+                        events.append(event)
+                        if len(events) >= 100:
+                            break
+                    except:
+                        continue
+            
+            if not events:
+                return
+            
+            logger.info(f"Flushing {len(events)} proof-of-play events to backend")
+            
+            url = f"{self.api_base_url}/api/device/{self.device_id}/proof_of_play/batch"
+            response = requests.post(url, json={'events': events}, timeout=30)
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"Proof-of-play batch accepted: {result['accepted']} events")
+                
+                remaining_events = []
+                with open(self.pop_queue_file, 'r') as f:
+                    for i, line in enumerate(f):
+                        if i >= len(events):
+                            remaining_events.append(line)
+                
+                with open(self.pop_queue_file, 'w') as f:
+                    f.writelines(remaining_events)
+            else:
+                logger.error(f"Failed to flush proof-of-play events: {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"Failed to flush proof-of-play events: {e}")
 
 def main():
     """Main entry point"""
