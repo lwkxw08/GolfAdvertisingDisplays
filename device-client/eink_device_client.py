@@ -552,12 +552,11 @@ class EInkDeviceClient:
             logger.error("Failed to initialize display")
             return False
         
+        self.running = True
         self.connectivity.start_monitoring()
         self.websocket_manager.start()
         self._start_command_polling()
         self._start_pop_flushing()
-        
-        self.running = True
         try:
             while self.running:
                 self._main_loop_iteration()
