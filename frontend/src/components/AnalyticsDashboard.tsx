@@ -6,7 +6,7 @@ interface AnalyticsDashboardProps {
 }
 
 export function AnalyticsDashboard({ courseId }: AnalyticsDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'campaigns' | 'devices' | 'revenue'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'campaigns' | 'devices' | 'revenue' | 'proofofplay'>('overview');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -15,6 +15,13 @@ export function AnalyticsDashboard({ courseId }: AnalyticsDashboardProps) {
   const [deviceUptimeData, setDeviceUptimeData] = useState<any[]>([]);
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [revenueConfigs, setRevenueConfigs] = useState<any[]>([]);
+  
+  const [popCampaignFilter, setPopCampaignFilter] = useState<number | null>(null);
+  const [popDeviceFilter, setPopDeviceFilter] = useState<number | null>(null);
+  const [popIncludeQR, setPopIncludeQR] = useState(false);
+  const [popFormat, setPopFormat] = useState<'csv' | 'json'>('csv');
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [devices, setDevices] = useState<any[]>([]);
   
   const [dateRange, setDateRange] = useState({
     start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -26,7 +33,21 @@ export function AnalyticsDashboard({ courseId }: AnalyticsDashboardProps) {
 
   useEffect(() => {
     loadDashboardData();
+    loadCampaignsAndDevices();
   }, [courseId]);
+  
+  const loadCampaignsAndDevices = async () => {
+    try {
+      const [campaignsData, devicesData] = await Promise.all([
+        apiClient.getCampaigns(),
+        apiClient.getDevices()
+      ]);
+      setCampaigns(campaignsData);
+      setDevices(devicesData);
+    } catch (err: any) {
+      console.error('Failed to load campaigns/devices:', err);
+    }
+  };
 
   const loadDashboardData = async () => {
     try {
@@ -156,6 +177,51 @@ export function AnalyticsDashboard({ courseId }: AnalyticsDashboardProps) {
       setLoading(false);
     }
   };
+  
+  const exportProofOfPlay = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const params = new URLSearchParams({
+        format: popFormat,
+        include_qr_analytics: popIncludeQR.toString(),
+        start_date: dateRange.start,
+        end_date: dateRange.end
+      });
+      
+      if (popCampaignFilter) {
+        params.append('campaign_id', popCampaignFilter.toString());
+      }
+      if (popDeviceFilter) {
+        params.append('device_id', popDeviceFilter.toString());
+      }
+      
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/analytics/proof-of-play/export?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to export proof-of-play data');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `proof_of_play_${dateRange.start}_${dateRange.end}.${popFormat}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading && !dashboardData) {
     return (
@@ -233,6 +299,16 @@ export function AnalyticsDashboard({ courseId }: AnalyticsDashboardProps) {
             }`}
           >
             Revenue Analytics
+          </button>
+          <button
+            onClick={() => setActiveTab('proofofplay')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'proofofplay'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Proof-of-Play Export
           </button>
         </nav>
       </div>
@@ -494,6 +570,112 @@ export function AnalyticsDashboard({ courseId }: AnalyticsDashboardProps) {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'proofofplay' && (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold mb-4">Export Proof-of-Play Logs</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              Export detailed proof-of-play logs for sponsor reporting and compliance. 
+              Each record includes display timestamp, duration, image hash, and device metadata.
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Campaign Filter (Optional)
+                </label>
+                <select
+                  value={popCampaignFilter || ''}
+                  onChange={(e) => setPopCampaignFilter(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full px-3 py-2 border rounded"
+                >
+                  <option value="">All Campaigns</option>
+                  {campaigns.map((campaign) => (
+                    <option key={campaign.id} value={campaign.id}>
+                      {campaign.sponsor_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Device Filter (Optional)
+                </label>
+                <select
+                  value={popDeviceFilter || ''}
+                  onChange={(e) => setPopDeviceFilter(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full px-3 py-2 border rounded"
+                >
+                  <option value="">All Devices</option>
+                  {devices.map((device) => (
+                    <option key={device.id} value={device.id}>
+                      {device.device_id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Export Format
+                </label>
+                <select
+                  value={popFormat}
+                  onChange={(e) => setPopFormat(e.target.value as 'csv' | 'json')}
+                  className="w-full px-3 py-2 border rounded"
+                >
+                  <option value="csv">CSV</option>
+                  <option value="json">JSON</option>
+                </select>
+              </div>
+              
+              <div className="flex items-end">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={popIncludeQR}
+                    onChange={(e) => setPopIncludeQR(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Include QR Analytics
+                  </span>
+                </label>
+              </div>
+            </div>
+            
+            <div className="flex justify-between items-center pt-4 border-t">
+              <div className="text-sm text-gray-600">
+                Date Range: {dateRange.start} to {dateRange.end}
+                {popCampaignFilter && <span className="ml-2">• Campaign filtered</span>}
+                {popDeviceFilter && <span className="ml-2">• Device filtered</span>}
+                {popIncludeQR && <span className="ml-2">• QR analytics included</span>}
+              </div>
+              <button
+                onClick={exportProofOfPlay}
+                disabled={loading}
+                className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Exporting...' : `Export ${popFormat.toUpperCase()}`}
+              </button>
+            </div>
+          </div>
+          
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h4 className="font-semibold text-blue-900 mb-2">About Proof-of-Play Logs</h4>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• <strong>Event ID:</strong> Unique identifier for each display event</li>
+              <li>• <strong>Image Hash:</strong> SHA-256 cryptographic verification of displayed content</li>
+              <li>• <strong>Duration:</strong> Actual measured display time (not estimated)</li>
+              <li>• <strong>Metadata:</strong> Connectivity type, power mode, firmware version</li>
+              <li>• <strong>QR Analytics:</strong> When enabled, includes QR code scan counts per campaign</li>
+              <li>• <strong>Limit:</strong> Maximum 10,000 records per export</li>
+            </ul>
           </div>
         </div>
       )}
