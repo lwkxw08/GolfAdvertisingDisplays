@@ -206,7 +206,17 @@ async def get_monitoring_dashboard(
     db: Session = Depends(get_db)
 ):
     """Get comprehensive monitoring dashboard data"""
-    health_summaries = await get_all_devices_health_summary(current_user, db)
+    health_summaries = await get_all_devices_health_summary(
+        status_filter=None,
+        course_id=None,
+        search=None,
+        sort_by="device_name",
+        sort_dir="asc",
+        page=1,
+        page_size=1000,
+        current_user=current_user,
+        db=db
+    )
     
     total_devices = len(health_summaries)
     online_devices = sum(1 for s in health_summaries if s.is_online)
