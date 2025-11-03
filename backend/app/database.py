@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum, Float, Index, JSON, Date, DECIMAL
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Enum, Float, Index, JSON, Date, DECIMAL, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.sql import func
@@ -524,6 +524,29 @@ class CampaignDisplayLog(Base):
     
     __table_args__ = (
         Index('idx_display_logs_campaign_date', 'campaign_id', 'displayed_at'),
+    )
+
+class DeviceUptimeWindow(Base):
+    """5-minute windows of device uptime data for idempotent ingestion"""
+    __tablename__ = "device_uptime_windows"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("devices.id"), nullable=False)
+    window_start = Column(DateTime(timezone=True), nullable=False)
+    window_end = Column(DateTime(timezone=True), nullable=False)
+    uptime_minutes = Column(Integer, default=0)
+    downtime_minutes = Column(Integer, default=0)
+    total_syncs = Column(Integer, default=0)
+    error_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    device = relationship("Device")
+    
+    __table_args__ = (
+        Index('idx_uptime_windows_device', 'device_id'),
+        Index('idx_uptime_windows_start', 'window_start'),
+        Index('idx_uptime_windows_device_start', 'device_id', 'window_start'),
+        UniqueConstraint('device_id', 'window_start', name='unique_device_window'),
     )
 
 class DeviceUptimeLog(Base):

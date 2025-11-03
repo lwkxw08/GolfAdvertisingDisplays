@@ -3,7 +3,7 @@ from sqlalchemy import func, and_, or_
 from datetime import datetime, timedelta, date, timezone
 from ..database import (
     Device, DeviceAnalytics, Course, Subscription, Notice, SponsorCampaign, PlanType,
-    CampaignAnalytics, DeviceUptimeLog, RevenueConfiguration, RevenueAnalytics,
+    CampaignAnalytics, DeviceUptimeLog, DeviceUptimeWindow, RevenueConfiguration, RevenueAnalytics,
     SavedReport, ReportExport, Region
 )
 from ..schemas import (

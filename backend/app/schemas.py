@@ -827,3 +827,23 @@ class ProofOfPlayExportRequest(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     format: str = "csv"  # csv or json
+
+class DeviceUptimeWindow(BaseModel):
+    """5-minute window of device uptime data"""
+    window_start: datetime
+    window_end: datetime
+    uptime_minutes: int
+    downtime_minutes: int
+    total_syncs: int = 0
+    error_count: int = 0
+
+class DeviceUptimeBatch(BaseModel):
+    """Batch of uptime windows from device"""
+    windows: List[DeviceUptimeWindow]
+
+class DeviceUptimeBatchResponse(BaseModel):
+    """Response from uptime batch ingestion"""
+    accepted: int
+    duplicates: int
+    errors: int
+    details: Dict[str, Any]

@@ -21,6 +21,7 @@ import websocket
 import ssl
 import hashlib
 import uuid
+from uptime_tracker import UptimeTracker
 
 try:
     from waveshare_epd import epd13in3E, epdconfig

@@ -546,3 +546,101 @@ async def ingest_proof_of_play_batch(
             "errors": errors
         }
     }
+
+@router.post("/device-uptime/ingest", response_model=schemas.DeviceUptimeBatchResponse)
+async def ingest_device_uptime_batch(
+    batch: schemas.DeviceUptimeBatch,
+    device_external_id: str = Query(..., description="Device external ID for authentication"),
+    db: Session = Depends(get_db)
+):
+    """
+    Ingest batch of device uptime windows from device client.
+    Uses idempotent window-based ingestion to handle retries safely.
+    """
+    try:
+        from ..database import DeviceUptimeWindow, DeviceUptimeLog
+        from sqlalchemy.exc import IntegrityError
+        from datetime import date
+        
+        # Authenticate device by external ID
+        device = db.query(Device).filter(Device.device_id == device_external_id).first()
+        if not device:
+            raise HTTPException(status_code=404, detail="Device not found")
+        
+        accepted = 0
+        duplicates = 0
+        errors = 0
+        error_details = []
+        
+        for window in batch.windows:
+            try:
+                # Try to insert window (idempotent due to unique constraint)
+                uptime_window = DeviceUptimeWindow(
+                    device_id=device.id,
+                    window_start=window.window_start,
+                    window_end=window.window_end,
+                    uptime_minutes=window.uptime_minutes,
+                    downtime_minutes=window.downtime_minutes,
+                    total_syncs=window.total_syncs,
+                    error_count=window.error_count
+                )
+                db.add(uptime_window)
+                db.flush()  # Flush to detect duplicates before committing
+                
+                # Window was new, so update daily DeviceUptimeLog
+                window_date = window.window_start.date()
+                daily_log = db.query(DeviceUptimeLog).filter(
+                    DeviceUptimeLog.device_id == device.id,
+                    DeviceUptimeLog.date == window_date
+                ).first()
+                
+                if daily_log:
+                    daily_log.uptime_minutes += window.uptime_minutes
+                    daily_log.downtime_minutes += window.downtime_minutes
+                    daily_log.total_syncs += window.total_syncs
+                    daily_log.error_count += window.error_count
+                else:
+                    daily_log = DeviceUptimeLog(
+                        device_id=device.id,
+                        date=window_date,
+                        uptime_minutes=window.uptime_minutes,
+                        downtime_minutes=window.downtime_minutes,
+                        total_syncs=window.total_syncs,
+                        error_count=window.error_count
+                    )
+                    db.add(daily_log)
+                
+                accepted += 1
+                
+            except IntegrityError:
+                # Duplicate window (already ingested), skip it
+                db.rollback()
+                duplicates += 1
+            except Exception as e:
+                db.rollback()
+                errors += 1
+                error_details.append({
+                    'window_start': window.window_start.isoformat(),
+                    'error': str(e)
+                })
+        
+        # Commit all successful inserts
+        if accepted > 0:
+            db.commit()
+        
+        return schemas.DeviceUptimeBatchResponse(
+            accepted=accepted,
+            duplicates=duplicates,
+            errors=errors,
+            details={
+                'device_id': device.id,
+                'device_external_id': device_external_id,
+                'total_windows': len(batch.windows),
+                'errors': error_details if error_details else []
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error ingesting uptime data: {str(e)}")
