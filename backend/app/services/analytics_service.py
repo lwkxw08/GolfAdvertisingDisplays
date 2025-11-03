@@ -761,6 +761,7 @@ class AnalyticsService:
         top_campaigns_query = db.query(
             CampaignAnalytics.campaign_id,
             SponsorCampaign.sponsor_name.label('campaign_name'),
+            Device.id.label('device_id'),
             Device.name.label('device_name'),
             func.sum(CampaignAnalytics.impressions).label('total_impressions'),
             func.sum(CampaignAnalytics.rotation_count).label('total_rotations'),
@@ -780,22 +781,38 @@ class AnalyticsService:
         top_campaigns_query = top_campaigns_query.group_by(
             CampaignAnalytics.campaign_id,
             SponsorCampaign.sponsor_name,
+            Device.id,
             Device.name
         ).order_by(func.sum(CampaignAnalytics.impressions).desc()).limit(10)
         
         top_campaigns_results = top_campaigns_query.all()
         
-        top_performing_campaigns = [
-            {
+        from ..database import CampaignDisplayLog
+        
+        top_performing_campaigns = []
+        for row in top_campaigns_results:
+            total_seconds = db.query(
+                func.coalesce(func.sum(CampaignDisplayLog.duration_seconds), 0)
+            ).filter(
+                CampaignDisplayLog.campaign_id == row.campaign_id,
+                CampaignDisplayLog.device_id == row.device_id,
+                func.date(CampaignDisplayLog.displayed_at) >= start_date,
+                func.date(CampaignDisplayLog.displayed_at) <= end_date
+            ).scalar() or 0
+            total_display_time_hours = float(total_seconds) / 3600.0
+            
+            top_performing_campaigns.append({
                 "campaign_id": row.campaign_id,
                 "campaign_name": row.campaign_name,
+                "device_id": row.device_id,
                 "device_name": row.device_name,
-                "total_impressions": row.total_impressions or 0,
-                "total_rotations": row.total_rotations or 0,
-                "avg_impressions_per_day": round(float(row.avg_impressions_per_day or 0), 2)
-            }
-            for row in top_campaigns_results
-        ]
+                "total_impressions": int(row.total_impressions or 0),
+                "total_rotations": int(row.total_rotations or 0),
+                "total_display_time_hours": round(total_display_time_hours, 2),
+                "avg_impressions_per_day": round(float(row.avg_impressions_per_day or 0), 2),
+                "date_range_start": start_date,
+                "date_range_end": end_date
+            })
         
         recent_reports_query = db.query(SavedReport).order_by(SavedReport.created_at.desc()).limit(5)
         if course_id:
