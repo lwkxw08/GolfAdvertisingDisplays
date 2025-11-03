@@ -2,10 +2,11 @@
 set -e
 
 
-SCRIPT_VERSION="2.1.0"
+SCRIPT_VERSION="2.2.0"
 API_BASE_URL="https://golfadvertisingdisplays.onrender.com"
 REPO_BRANCH="devin/1727000056-supabase-migration"
 DEVICE_CLIENT_URL="https://raw.githubusercontent.com/lwkxw08/GolfAdvertisingDisplays/${REPO_BRANCH}/device-client/eink_device_client.py"
+UPTIME_TRACKER_URL="https://raw.githubusercontent.com/lwkxw08/GolfAdvertisingDisplays/${REPO_BRANCH}/device-client/uptime_tracker.py"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -313,6 +314,16 @@ verify_installation() {
         errors=$((errors + 1))
     fi
     
+    if [ ! -f "/home/pi/eink-device/uptime_tracker.py" ]; then
+        print_error "Uptime tracker not found"
+        errors=$((errors + 1))
+    fi
+    
+    if [ ! -d "/var/lib/gad" ]; then
+        print_error "Uptime state directory not found"
+        errors=$((errors + 1))
+    fi
+    
     if [ ! -f "/etc/eink_device/config.json" ]; then
         print_error "Configuration file not found"
         errors=$((errors + 1))
@@ -354,6 +365,8 @@ display_completion() {
     echo "  ✓ WebSocket real-time notifications"
     echo "  ✓ Automatic retry logic for command reporting"
     echo "  ✓ Resilient to backend restarts and network issues"
+    echo "  ✓ Device uptime tracking with minute-level accuracy"
+    echo "  ✓ Proof-of-Play logging for sponsor reporting"
     echo ""
     echo "IMPORTANT: After reboot, start the service with:"
     echo "  sudo systemctl start eink-device.service"
