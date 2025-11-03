@@ -491,7 +491,7 @@ async def export_proof_of_play(
 ):
     """Export proof-of-play logs with optional QR analytics for sponsor reporting"""
     try:
-        from ..database import QRScan
+        from ..database import QRCode, QRCodeScan
         
         query = db.query(
             CampaignDisplayLog,
@@ -520,25 +520,25 @@ async def export_proof_of_play(
         qr_data = {}
         if include_qr_analytics:
             qr_query = db.query(
-                QRScan.campaign_id,
-                func.count(QRScan.id).label('scan_count')
+                QRCode.campaign_id,
+                func.count(QRCodeScan.id).label('scan_count')
             ).join(
-                Device, QRScan.device_id == Device.id
+                QRCodeScan, QRCode.id == QRCodeScan.qr_code_id
+            ).filter(
+                QRCode.campaign_id.isnot(None)
             )
             
             if current_user.role.value != "admin" and current_user.course_id:
-                qr_query = qr_query.filter(Device.course_id == current_user.course_id)
+                qr_query = qr_query.filter(QRCode.course_id == current_user.course_id)
             
             if campaign_id:
-                qr_query = qr_query.filter(QRScan.campaign_id == campaign_id)
-            if device_id:
-                qr_query = qr_query.filter(QRScan.device_id == device_id)
+                qr_query = qr_query.filter(QRCode.campaign_id == campaign_id)
             if start_date:
-                qr_query = qr_query.filter(func.date(QRScan.scanned_at) >= start_date)
+                qr_query = qr_query.filter(func.date(QRCodeScan.scan_timestamp) >= start_date)
             if end_date:
-                qr_query = qr_query.filter(func.date(QRScan.scanned_at) <= end_date)
+                qr_query = qr_query.filter(func.date(QRCodeScan.scan_timestamp) <= end_date)
             
-            qr_results = qr_query.group_by(QRScan.campaign_id).all()
+            qr_results = qr_query.group_by(QRCode.campaign_id).all()
             qr_data = {r.campaign_id: r.scan_count for r in qr_results}
         
         if format == "csv":
