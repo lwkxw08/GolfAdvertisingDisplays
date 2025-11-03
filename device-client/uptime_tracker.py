@@ -214,7 +214,7 @@ class UptimeTracker:
             return
         
         try:
-            url = f"{self.api_base_url}/device-uptime/ingest"
+            url = f"{self.api_base_url}/api/device-uptime/ingest"
             payload = {'windows': self.pending_windows}
             params = {'device_external_id': self.device_id}
             
