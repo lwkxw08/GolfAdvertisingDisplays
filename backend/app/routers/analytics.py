@@ -495,6 +495,7 @@ async def export_proof_of_play(
         
         query = db.query(
             CampaignDisplayLog,
+            Device.name.label('device_name'),
             Device.device_id.label('device_external_id'),
             SponsorCampaign.sponsor_name
         ).join(
@@ -546,22 +547,24 @@ async def export_proof_of_play(
             writer = csv.writer(output)
             
             headers = [
-                'Event ID', 'Campaign ID', 'Campaign Name', 'Device ID', 'Device Name',
-                'Content Type', 'Displayed At', 'Ended At', 'Duration (seconds)',
-                'Image Hash', 'Hash Algorithm', 'Creative URL', 'Render Success',
-                'Connectivity', 'Power Mode', 'Firmware Version'
+                'Event ID', 'Campaign ID', 'Campaign Name', 'Device Internal ID', 
+                'Device Name', 'Device External ID', 'Content Type', 'Displayed At', 
+                'Ended At', 'Duration (seconds)', 'Image Hash', 'Hash Algorithm', 
+                'Creative URL', 'Render Success', 'Connectivity', 'Power Mode', 
+                'Firmware Version'
             ]
             if include_qr_analytics:
                 headers.append('QR Scans')
             
             writer.writerow(headers)
             
-            for log, device_external_id, sponsor_name in logs:
+            for log, device_name, device_external_id, sponsor_name in logs:
                 row = [
                     log.event_id,
                     log.campaign_id or '',
                     sponsor_name or '',
                     log.device_id,
+                    device_name or '',
                     device_external_id or '',
                     log.content_type,
                     log.displayed_at.isoformat() if log.displayed_at else '',
@@ -589,12 +592,13 @@ async def export_proof_of_play(
         else:
             import json
             data = []
-            for log, device_external_id, sponsor_name in logs:
+            for log, device_name, device_external_id, sponsor_name in logs:
                 item = {
                     'event_id': log.event_id,
                     'campaign_id': log.campaign_id,
                     'campaign_name': sponsor_name,
-                    'device_id': log.device_id,
+                    'device_internal_id': log.device_id,
+                    'device_name': device_name,
                     'device_external_id': device_external_id,
                     'content_type': log.content_type,
                     'displayed_at': log.displayed_at.isoformat() if log.displayed_at else None,
