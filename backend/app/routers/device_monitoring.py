@@ -107,6 +107,47 @@ async def record_device_health(
     
     return health_metric
 
+
+@router.post("/device/{external_id}/health")
+async def record_device_health_by_external_id(
+    external_id: str,
+    health_data: schemas.DeviceStatusUpdate,
+    db: Session = Depends(get_db)
+):
+    """Record health metrics for a device using external_id (called by device client heartbeat)"""
+    device = db.query(Device).filter(Device.external_id == external_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    device.is_online = True
+    device.last_sync = datetime.now(timezone.utc)
+    
+    health_metric = DeviceHealthMetric(
+        device_id=device.id,
+        battery_level=health_data.battery_level,
+        battery_voltage=health_data.battery_voltage,
+        is_charging=health_data.is_charging or False,
+        connectivity_type=health_data.connectivity_type,
+        signal_strength=health_data.signal_strength,
+        wifi_ssid=health_data.wifi_ssid,
+        temperature=health_data.temperature,
+        cpu_usage=health_data.cpu_usage,
+        memory_usage=health_data.memory_usage,
+        storage_usage=health_data.storage_usage,
+        display_errors=health_data.display_errors or 0,
+        last_error=health_data.last_error,
+        uptime_seconds=health_data.uptime_seconds
+    )
+    
+    db.add(health_metric)
+    
+    await DeviceMonitoringService.check_device_health_alerts(device, health_metric, db)
+    
+    db.commit()
+    
+    return {"status": "ok", "message": "Health metrics recorded"}
+
+
 @router.get("/devices/health/summary", response_model=List[schemas.DeviceHealthSummary])
 async def get_all_devices_health_summary(
     status_filter: Optional[str] = Query(None, description="Filter by status: green, yellow, red"),

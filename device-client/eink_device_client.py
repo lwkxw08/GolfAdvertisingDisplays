@@ -512,6 +512,9 @@ class EInkDeviceClient:
         self.pop_flush_thread = None
         self._ensure_pop_queue_dir()
         
+        self.health_heartbeat_interval = 600
+        self.health_heartbeat_thread = None
+        
         logger.info(f"E-ink device client initialized for device: {self.device_id}")
     
     def _load_config(self, config_file: str) -> Dict[str, Any]:
@@ -558,6 +561,7 @@ class EInkDeviceClient:
         self.websocket_manager.start()
         self._start_command_polling()
         self._start_pop_flushing()
+        self._start_health_heartbeat()
         try:
             while self.running:
                 self._main_loop_iteration()
@@ -583,6 +587,8 @@ class EInkDeviceClient:
             self.command_polling_thread.join(timeout=5)
         if self.pop_flush_thread:
             self.pop_flush_thread.join(timeout=5)
+        if self.health_heartbeat_thread:
+            self.health_heartbeat_thread.join(timeout=5)
         self.display.sleep()
         logger.info("Device client stopped")
     
@@ -1033,6 +1039,65 @@ class EInkDeviceClient:
                 
         except Exception as e:
             logger.error(f"Failed to flush proof-of-play events: {e}")
+    
+    def _start_health_heartbeat(self):
+        """Start background thread for periodic health heartbeat"""
+        if not self.health_heartbeat_thread or not self.health_heartbeat_thread.is_alive():
+            self.health_heartbeat_thread = threading.Thread(target=self._health_heartbeat_loop, daemon=True)
+            self.health_heartbeat_thread.start()
+            logger.info("Health heartbeat thread started")
+    
+    def _health_heartbeat_loop(self):
+        """Background loop to send periodic health heartbeats"""
+        while self.running:
+            try:
+                time.sleep(self.health_heartbeat_interval)
+                self._send_health_heartbeat()
+            except Exception as e:
+                logger.error(f"Error in health heartbeat loop: {e}")
+                time.sleep(60)
+    
+    def _send_health_heartbeat(self):
+        """Send periodic health heartbeat to backend"""
+        try:
+            connectivity_status = self.connectivity.get_current_status()
+            power_status = self.power.get_status()
+            
+            cpu_usage = psutil.cpu_percent(interval=1)
+            memory = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+            
+            try:
+                with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                    temperature = float(f.read().strip()) / 1000.0
+            except:
+                temperature = None
+            
+            health_data = {
+                'is_online': True,
+                'battery_level': power_status['battery_level'],
+                'is_charging': power_status['charging'],
+                'connectivity_type': connectivity_status.get('current_connection', 'unknown'),
+                'signal_strength': self._get_signal_strength(connectivity_status),
+                'temperature': temperature,
+                'cpu_usage': cpu_usage,
+                'memory_usage': memory.percent,
+                'storage_usage': disk.percent,
+                'uptime_seconds': int(time.time() - psutil.boot_time()),
+                'display_errors': 0,
+                'last_error': None
+            }
+            
+            url = f"{self.api_base_url}/api/device/{self.device_id}/health"
+            response = requests.post(url, json=health_data, timeout=30)
+            
+            if response.status_code == 200:
+                logger.debug("Health heartbeat sent successfully")
+            else:
+                logger.warning(f"Health heartbeat failed: {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"Failed to send health heartbeat: {e}")
 
 def main():
     """Main entry point"""
