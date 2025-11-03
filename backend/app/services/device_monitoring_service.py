@@ -109,6 +109,17 @@ class DeviceMonitoringService:
             DeviceHealthMetric.timestamp >= since_24h
         ).scalar() or 0
         
+        active_alerts = db.query(func.count(DeviceAlert.id)).filter(
+            DeviceAlert.device_id == device.id,
+            DeviceAlert.is_resolved == False
+        ).scalar() or 0
+        
+        critical_alerts = db.query(func.count(DeviceAlert.id)).filter(
+            DeviceAlert.device_id == device.id,
+            DeviceAlert.is_resolved == False,
+            DeviceAlert.severity == AlertSeverity.CRITICAL
+        ).scalar() or 0
+        
         health_score = 100.0
         if latest_health:
             if latest_health.battery_level and latest_health.battery_level < 20:
@@ -126,6 +137,10 @@ class DeviceMonitoringService:
         
         health_score = max(0, health_score)
         
+        status_color, status_reason = DeviceMonitoringService._compute_device_status(
+            device, latest_health, critical_alerts, active_alerts
+        )
+        
         return schemas.DeviceHealthSummary(
             device_id=device.id,
             device_name=device.name,
@@ -139,8 +154,75 @@ class DeviceMonitoringService:
             uptime_hours=latest_health.uptime_seconds / 3600 if latest_health and latest_health.uptime_seconds else None,
             error_count_24h=int(error_count),
             last_error=latest_health.last_error if latest_health else None,
-            health_score=health_score
+            health_score=health_score,
+            status_color=status_color,
+            status_reason=status_reason,
+            active_alerts=active_alerts,
+            critical_alerts=critical_alerts
         )
+    
+    @staticmethod
+    def _compute_device_status(device: Device, latest_health: Optional[DeviceHealthMetric], 
+                               critical_alerts: int, active_alerts: int) -> tuple[str, str]:
+        """
+        Compute device status color and reason based on health metrics and alerts.
+        
+        Status Rules:
+        - RED: offline >30m, battery <10%, critical alerts, or no health data >24h
+        - YELLOW: online but battery 10-30%, signal 20-40%, last_seen 15-60m, or non-critical alerts
+        - GREEN: online, last_seen ≤15m, battery ≥30%, signal ≥40%, no critical alerts
+        """
+        now = datetime.now(timezone.utc)
+        
+        if critical_alerts > 0:
+            return 'red', f'{critical_alerts} critical alert(s)'
+        
+        if not device.is_online:
+            if device.last_sync:
+                minutes_offline = int((now - device.last_sync).total_seconds() / 60)
+                if minutes_offline > 30:
+                    return 'red', f'Offline for {minutes_offline}m'
+            else:
+                return 'red', 'Never connected'
+        
+        if not latest_health:
+            return 'red', 'No health data available'
+        
+        if latest_health.timestamp:
+            hours_since_health = (now - latest_health.timestamp).total_seconds() / 3600
+            if hours_since_health > 24:
+                return 'red', f'Health data stale ({int(hours_since_health)}h old)'
+        
+        if latest_health.battery_level is not None and latest_health.battery_level < 10:
+            return 'red', f'Critical battery: {int(latest_health.battery_level)}%'
+        
+        yellow_reasons = []
+        
+        if device.last_sync:
+            minutes_since_sync = int((now - device.last_sync).total_seconds() / 60)
+            if 15 < minutes_since_sync <= 60:
+                yellow_reasons.append(f'Last seen {minutes_since_sync}m ago')
+        
+        if latest_health.battery_level is not None and 10 <= latest_health.battery_level < 30:
+            yellow_reasons.append(f'Low battery: {int(latest_health.battery_level)}%')
+        
+        if latest_health.signal_strength is not None and 20 <= latest_health.signal_strength < 40:
+            yellow_reasons.append(f'Weak signal: {int(latest_health.signal_strength)}%')
+        
+        if active_alerts > critical_alerts:
+            non_critical_alerts = active_alerts - critical_alerts
+            yellow_reasons.append(f'{non_critical_alerts} warning(s)')
+        
+        if latest_health.temperature is not None and latest_health.temperature > 70:
+            yellow_reasons.append(f'High temp: {int(latest_health.temperature)}°C')
+        
+        if latest_health.storage_usage is not None and latest_health.storage_usage > 90:
+            yellow_reasons.append(f'Storage: {int(latest_health.storage_usage)}%')
+        
+        if yellow_reasons:
+            return 'yellow', ', '.join(yellow_reasons[:2])  # Limit to 2 reasons for brevity
+        
+        return 'green', 'Healthy'
     
     @staticmethod
     async def check_offline_devices(db: Session):

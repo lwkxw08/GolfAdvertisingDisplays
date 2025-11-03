@@ -27,6 +27,8 @@ interface DeviceHealthSummary {
   temperature: number | null;
   storage_usage: number | null;
   health_score: number;
+  status_color: 'green' | 'yellow' | 'red';
+  status_reason: string;
   active_alerts: number;
   critical_alerts: number;
 }
@@ -74,6 +76,9 @@ const DeviceMonitoringDashboard: React.FC = () => {
   const [error, setError] = useState('');
   const [deviceCommands, setDeviceCommands] = useState<Record<number, DeviceCommand[]>>({});
   const [pendingCommands, setPendingCommands] = useState<Record<number, number>>({});
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortBy, setSortBy] = useState<string>('status_color');
 
   useEffect(() => {
     loadDashboardData();
@@ -219,6 +224,42 @@ const DeviceMonitoringDashboard: React.FC = () => {
     return `${diffDays}d ago`;
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'green': return 'bg-green-500';
+      case 'yellow': return 'bg-yellow-500';
+      case 'red': return 'bg-red-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  const getStatusBorderColor = (status: string) => {
+    switch (status) {
+      case 'green': return 'border-green-300';
+      case 'yellow': return 'border-yellow-300';
+      case 'red': return 'border-red-300';
+      default: return 'border-gray-300';
+    }
+  };
+
+  const filteredDevices = dashboard?.device_health_summary.filter(device => {
+    if (statusFilter !== 'all' && device.status_color !== statusFilter) return false;
+    if (searchQuery && !device.device_name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    return true;
+  }).sort((a, b) => {
+    if (sortBy === 'status_color') {
+      const statusOrder = { red: 0, yellow: 1, green: 2 };
+      return (statusOrder[a.status_color] || 3) - (statusOrder[b.status_color] || 3);
+    } else if (sortBy === 'device_name') {
+      return a.device_name.localeCompare(b.device_name);
+    } else if (sortBy === 'last_seen') {
+      const aTime = a.last_seen ? new Date(a.last_seen).getTime() : 0;
+      const bTime = b.last_seen ? new Date(b.last_seen).getTime() : 0;
+      return bTime - aTime;
+    }
+    return 0;
+  }) || [];
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -316,6 +357,47 @@ const DeviceMonitoringDashboard: React.FC = () => {
         </Card>
       </div>
 
+      {/* Filters and Search */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="Search devices..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex gap-2">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Status</option>
+                <option value="green">🟢 Healthy</option>
+                <option value="yellow">🟡 Warning</option>
+                <option value="red">🔴 Critical</option>
+              </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="status_color">Sort by Status</option>
+                <option value="device_name">Sort by Name</option>
+                <option value="last_seen">Sort by Last Seen</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-2 text-sm text-gray-600">
+            Showing {filteredDevices.length} of {dashboard.device_health_summary.length} devices
+          </div>
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="devices" className="w-full">
         <TabsList>
           <TabsTrigger value="devices">Device Health</TabsTrigger>
@@ -329,11 +411,12 @@ const DeviceMonitoringDashboard: React.FC = () => {
 
         <TabsContent value="devices" className="space-y-4">
           <div className="grid grid-cols-1 gap-4">
-            {dashboard.device_health_summary.map((device) => (
-              <Card key={device.device_id} className={device.critical_alerts > 0 ? 'border-red-300' : ''}>
+            {filteredDevices.map((device) => (
+              <Card key={device.device_id} className={`${getStatusBorderColor(device.status_color)} border-2`}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full ${getStatusColor(device.status_color)}`} title={device.status_reason}></div>
                       <CardTitle className="text-lg">{device.device_name}</CardTitle>
                       <Badge variant={device.is_online ? 'default' : 'secondary'}>
                         {device.is_online ? 'Online' : 'Offline'}
@@ -352,7 +435,11 @@ const DeviceMonitoringDashboard: React.FC = () => {
                     </div>
                   </div>
                   <CardDescription>
-                    Last seen: {formatLastSeen(device.last_seen)}
+                    <div className="flex items-center gap-2">
+                      <span>Last seen: {formatLastSeen(device.last_seen)}</span>
+                      <span className="text-gray-400">•</span>
+                      <span className="text-sm">{device.status_reason}</span>
+                    </div>
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

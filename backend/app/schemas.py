@@ -371,6 +371,10 @@ class DeviceHealthSummary(BaseModel):
     error_count_24h: int
     last_error: Optional[str]
     health_score: float  # 0-100
+    status_color: str  # 'green', 'yellow', 'red'
+    status_reason: str  # Human-readable reason for status
+    active_alerts: int = 0
+    critical_alerts: int = 0
 
 class DeviceAlertCreate(BaseModel):
     device_id: int

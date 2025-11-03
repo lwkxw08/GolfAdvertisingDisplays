@@ -109,21 +109,55 @@ async def record_device_health(
 
 @router.get("/devices/health/summary", response_model=List[schemas.DeviceHealthSummary])
 async def get_all_devices_health_summary(
+    status_filter: Optional[str] = Query(None, description="Filter by status: green, yellow, red"),
+    course_id: Optional[int] = Query(None, description="Filter by course ID"),
+    search: Optional[str] = Query(None, description="Search by device name"),
+    sort_by: Optional[str] = Query("device_name", description="Sort by: device_name, last_seen, battery_level, status_color"),
+    sort_dir: Optional[str] = Query("asc", description="Sort direction: asc, desc"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(100, ge=1, le=500, description="Items per page"),
     current_user: User = Depends(require_tenant_access),
     db: Session = Depends(get_db)
 ):
-    """Get health summary for all devices (filtered by user access)"""
+    """Get health summary for all devices with pagination, sorting, and filtering"""
+    query = db.query(Device)
+    
     if current_user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
-        devices = db.query(Device).all()
+        pass
     else:
-        devices = db.query(Device).filter(Device.course_id == current_user.course_id).all()
+        query = query.filter(Device.course_id == current_user.course_id)
+    
+    if course_id is not None:
+        query = query.filter(Device.course_id == course_id)
+    
+    if search:
+        query = query.filter(Device.name.ilike(f"%{search}%"))
+    
+    devices = query.all()
     
     summaries = []
     for device in devices:
         summary = DeviceMonitoringService.get_device_health_summary(device, db)
         summaries.append(summary)
     
-    return summaries
+    if status_filter:
+        summaries = [s for s in summaries if s.status_color == status_filter.lower()]
+    
+    if sort_by == "device_name":
+        summaries.sort(key=lambda x: x.device_name.lower(), reverse=(sort_dir == "desc"))
+    elif sort_by == "last_seen":
+        summaries.sort(key=lambda x: x.last_seen or datetime.min.replace(tzinfo=timezone.utc), reverse=(sort_dir == "desc"))
+    elif sort_by == "battery_level":
+        summaries.sort(key=lambda x: x.battery_level if x.battery_level is not None else -1, reverse=(sort_dir == "desc"))
+    elif sort_by == "status_color":
+        status_order = {"red": 0, "yellow": 1, "green": 2}
+        summaries.sort(key=lambda x: status_order.get(x.status_color, 3), reverse=(sort_dir == "desc"))
+    
+    total = len(summaries)
+    start = (page - 1) * page_size
+    end = start + page_size
+    
+    return summaries[start:end]
 
 @router.get("/devices/monitoring/dashboard", response_model=schemas.DeviceMonitoringDashboard)
 async def get_monitoring_dashboard(
