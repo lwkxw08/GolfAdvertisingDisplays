@@ -75,6 +75,7 @@ sudo cp "$CONFIG_FILE" "${CONFIG_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
 print_success "Backup created"
 
 print_info "Updating configuration to add external_id..."
+TEMP_CONFIG=$(mktemp)
 python3 << EOF
 import json
 
@@ -87,15 +88,11 @@ if 'external_id' not in config:
 else:
     print(f"external_id already present: {config['external_id']}")
 
-import tempfile
-with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as tmp:
-    json.dump(config, tmp, indent=2)
-    tmp_path = tmp.name
-
-import shutil
-shutil.move(tmp_path, '$CONFIG_FILE')
+with open('$TEMP_CONFIG', 'w') as f:
+    json.dump(config, f, indent=2)
 EOF
 
+sudo mv "$TEMP_CONFIG" "$CONFIG_FILE"
 sudo chown root:root "$CONFIG_FILE"
 sudo chmod 644 "$CONFIG_FILE"
 print_success "Configuration updated"
