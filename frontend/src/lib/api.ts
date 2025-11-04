@@ -829,6 +829,45 @@ class ApiClient {
     const query = queryParams.toString();
     return this.request(`/api/qr-codes/performance/report${query ? `?${query}` : ''}`);
   }
+
+  async getDeviceTrends(deviceId: number, days: number = 7): Promise<any> {
+    return this.request(`/api/devices/${deviceId}/trends?days=${days}`);
+  }
+
+  async getFleetTrends(days: number = 7, courseId?: number): Promise<any> {
+    const query = courseId ? `?days=${days}&course_id=${courseId}` : `?days=${days}`;
+    return this.request(`/api/devices/fleet/trends${query}`);
+  }
+
+  async issueBulkCommand(deviceIds: number[], commandType: string, commandData?: any): Promise<any> {
+    return this.request('/api/devices/bulk/command', {
+      method: 'POST',
+      body: JSON.stringify({
+        device_ids: deviceIds,
+        command_type: commandType,
+        command_data: commandData
+      })
+    });
+  }
+
+  async exportDevicesCSV(statusFilter?: string, courseId?: number): Promise<Blob> {
+    const queryParams = new URLSearchParams();
+    if (statusFilter) queryParams.append('status_filter', statusFilter);
+    if (courseId) queryParams.append('course_id', courseId.toString());
+    
+    const query = queryParams.toString();
+    const response = await fetch(`${API_BASE_URL}/api/devices/export/csv${query ? `?${query}` : ''}`, {
+      headers: {
+        'Authorization': `Bearer ${this.token}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to export CSV');
+    }
+    
+    return response.blob();
+  }
 }
 
 export const apiClient = new ApiClient();

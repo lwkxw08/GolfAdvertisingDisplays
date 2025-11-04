@@ -851,3 +851,46 @@ class DeviceUptimeBatchResponse(BaseModel):
     duplicates: int
     errors: int
     details: Dict[str, Any]
+
+class DeviceHealthTrend(BaseModel):
+    timestamp: datetime
+    battery_level: Optional[float]
+    temperature: Optional[float]
+    signal_strength: Optional[float]
+    storage_usage: Optional[float]
+    health_score: float
+    
+    class Config:
+        from_attributes = True
+
+class DeviceTrendsResponse(BaseModel):
+    device_id: int
+    device_name: str
+    period_days: int
+    health_trends: List[DeviceHealthTrend]
+    battery_degradation_rate: Optional[float]  # % per day
+    avg_temperature: Optional[float]
+    max_temperature: Optional[float]
+    offline_incidents: int
+    avg_uptime_hours: Optional[float]
+    predictive_alerts: List[str]  # Predicted issues
+
+class FleetTrendsResponse(BaseModel):
+    period_days: int
+    total_devices: int
+    avg_health_score: float
+    health_score_trend: List[Dict[str, Any]]  # [{date, avg_score}]
+    battery_health_trend: List[Dict[str, Any]]
+    offline_pattern: Dict[str, int]  # {day_of_week: count}
+    devices_at_risk: List[Dict[str, Any]]  # Devices predicted to fail soon
+
+class BulkCommandRequest(BaseModel):
+    device_ids: List[int]
+    command_type: str
+    command_data: Optional[Dict[str, Any]] = None
+
+class BulkCommandResponse(BaseModel):
+    success: bool
+    commands_issued: int
+    command_ids: List[int]
+    failed_devices: List[int] = []

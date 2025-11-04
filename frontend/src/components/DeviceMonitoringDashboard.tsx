@@ -13,7 +13,13 @@ import {
   RefreshCw,
   Terminal,
   CheckCircle,
-  Clock
+  Clock,
+  Download,
+  Table as TableIcon,
+  Grid,
+  TrendingUp,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { apiClient } from '../lib/api';
 
@@ -79,6 +85,11 @@ const DeviceMonitoringDashboard: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('status_color');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [selectedDevices, setSelectedDevices] = useState<Set<number>>(new Set());
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set([
+    'name', 'status', 'battery', 'signal', 'temperature', 'storage', 'health', 'alerts'
+  ]));
 
   useEffect(() => {
     loadDashboardData();
@@ -242,6 +253,67 @@ const DeviceMonitoringDashboard: React.FC = () => {
     }
   };
 
+  const handleBulkCommand = async (commandType: string) => {
+    if (selectedDevices.size === 0) {
+      setError('Please select at least one device');
+      return;
+    }
+
+    try {
+      const deviceIds = Array.from(selectedDevices);
+      await apiClient.issueBulkCommand(deviceIds, commandType);
+      setError('');
+      setSelectedDevices(new Set());
+      loadDashboardData();
+    } catch (err: any) {
+      setError(err.message || 'Failed to issue bulk command');
+    }
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      const blob = await apiClient.exportDevicesCSV(statusFilter !== 'all' ? statusFilter : undefined);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `device_health_export_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      setError(err.message || 'Failed to export CSV');
+    }
+  };
+
+  const toggleDeviceSelection = (deviceId: number) => {
+    const newSelection = new Set(selectedDevices);
+    if (newSelection.has(deviceId)) {
+      newSelection.delete(deviceId);
+    } else {
+      newSelection.add(deviceId);
+    }
+    setSelectedDevices(newSelection);
+  };
+
+  const toggleAllDevices = () => {
+    if (selectedDevices.size === filteredDevices.length) {
+      setSelectedDevices(new Set());
+    } else {
+      setSelectedDevices(new Set(filteredDevices.map(d => d.device_id)));
+    }
+  };
+
+  const toggleColumn = (column: string) => {
+    const newColumns = new Set(visibleColumns);
+    if (newColumns.has(column)) {
+      newColumns.delete(column);
+    } else {
+      newColumns.add(column);
+    }
+    setVisibleColumns(newColumns);
+  };
+
   const filteredDevices = dashboard?.device_health_summary.filter(device => {
     if (statusFilter !== 'all' && device.status_color !== statusFilter) return false;
     if (searchQuery && !device.device_name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -256,6 +328,10 @@ const DeviceMonitoringDashboard: React.FC = () => {
       const aTime = a.last_seen ? new Date(a.last_seen).getTime() : 0;
       const bTime = b.last_seen ? new Date(b.last_seen).getTime() : 0;
       return bTime - aTime;
+    } else if (sortBy === 'battery') {
+      return (b.battery_level || 0) - (a.battery_level || 0);
+    } else if (sortBy === 'health') {
+      return b.health_score - a.health_score;
     }
     return 0;
   }) || [];
@@ -360,40 +436,110 @@ const DeviceMonitoringDashboard: React.FC = () => {
       {/* Filters and Search */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <input
-                type="text"
-                placeholder="Search devices..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  placeholder="Search devices..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex gap-2">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Status</option>
+                  <option value="green">🟢 Healthy</option>
+                  <option value="yellow">🟡 Warning</option>
+                  <option value="red">🔴 Critical</option>
+                </select>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="status_color">Sort by Status</option>
+                  <option value="device_name">Sort by Name</option>
+                  <option value="last_seen">Sort by Last Seen</option>
+                  <option value="battery">Sort by Battery</option>
+                  <option value="health">Sort by Health Score</option>
+                </select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setViewMode(viewMode === 'cards' ? 'table' : 'cards')}
+                >
+                  {viewMode === 'cards' ? <TableIcon className="w-4 h-4" /> : <Grid className="w-4 h-4" />}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportCSV}
+                >
+                  <Download className="w-4 h-4 mr-1" />
+                  CSV
+                </Button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Status</option>
-                <option value="green">🟢 Healthy</option>
-                <option value="yellow">🟡 Warning</option>
-                <option value="red">🔴 Critical</option>
-              </select>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="status_color">Sort by Status</option>
-                <option value="device_name">Sort by Name</option>
-                <option value="last_seen">Sort by Last Seen</option>
-              </select>
+            
+            {selectedDevices.size > 0 && (
+              <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-md">
+                <span className="text-sm font-medium">{selectedDevices.size} device(s) selected</span>
+                <div className="flex gap-2 ml-auto">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleBulkCommand('refresh_display')}
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    Refresh All
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleBulkCommand('reboot')}
+                  >
+                    <Activity className="w-3 h-3 mr-1" />
+                    Reboot All
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSelectedDevices(new Set())}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600">
+                Showing {filteredDevices.length} of {dashboard.device_health_summary.length} devices
+              </div>
+              {viewMode === 'table' && (
+                <div className="flex gap-2">
+                  <span className="text-sm text-gray-600">Columns:</span>
+                  {['name', 'status', 'battery', 'signal', 'temperature', 'storage', 'health', 'alerts'].map(col => (
+                    <button
+                      key={col}
+                      onClick={() => toggleColumn(col)}
+                      className={`text-xs px-2 py-1 rounded ${
+                        visibleColumns.has(col) ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {visibleColumns.has(col) ? <Eye className="w-3 h-3 inline mr-1" /> : <EyeOff className="w-3 h-3 inline mr-1" />}
+                      {col}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-          <div className="mt-2 text-sm text-gray-600">
-            Showing {filteredDevices.length} of {dashboard.device_health_summary.length} devices
           </div>
         </CardContent>
       </Card>
@@ -407,11 +553,145 @@ const DeviceMonitoringDashboard: React.FC = () => {
               <Badge variant="destructive" className="ml-2">{alerts.length}</Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="trends">
+            <TrendingUp className="w-4 h-4 mr-1" />
+            Trends
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="devices" className="space-y-4">
-          <div className="grid grid-cols-1 gap-4">
-            {filteredDevices.map((device) => (
+          {viewMode === 'table' ? (
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-4 py-3 text-left">
+                          <input
+                            type="checkbox"
+                            checked={selectedDevices.size === filteredDevices.length && filteredDevices.length > 0}
+                            onChange={toggleAllDevices}
+                            className="rounded"
+                          />
+                        </th>
+                        {visibleColumns.has('name') && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Device</th>}
+                        {visibleColumns.has('status') && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>}
+                        {visibleColumns.has('battery') && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Battery</th>}
+                        {visibleColumns.has('signal') && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Signal</th>}
+                        {visibleColumns.has('temperature') && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Temp</th>}
+                        {visibleColumns.has('storage') && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Storage</th>}
+                        {visibleColumns.has('health') && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Health</th>}
+                        {visibleColumns.has('alerts') && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Alerts</th>}
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {filteredDevices.map((device) => (
+                        <tr key={device.device_id} className={`hover:bg-gray-50 ${getStatusBorderColor(device.status_color)} border-l-4`}>
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedDevices.has(device.device_id)}
+                              onChange={() => toggleDeviceSelection(device.device_id)}
+                              className="rounded"
+                            />
+                          </td>
+                          {visibleColumns.has('name') && (
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full ${getStatusColor(device.status_color)}`}></div>
+                                <span className="font-medium">{device.device_name}</span>
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.has('status') && (
+                            <td className="px-4 py-3">
+                              <Badge variant={device.is_online ? 'default' : 'secondary'}>
+                                {device.is_online ? 'Online' : 'Offline'}
+                              </Badge>
+                            </td>
+                          )}
+                          {visibleColumns.has('battery') && (
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1">
+                                <Battery className="w-4 h-4 text-gray-400" />
+                                {device.battery_level !== null ? `${Math.round(device.battery_level)}%` : 'N/A'}
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.has('signal') && (
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1">
+                                <Wifi className="w-4 h-4 text-gray-400" />
+                                {device.signal_strength !== null ? `${Math.round(device.signal_strength)}%` : 'N/A'}
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.has('temperature') && (
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1">
+                                <Thermometer className="w-4 h-4 text-gray-400" />
+                                {device.temperature !== null ? `${Math.round(device.temperature)}°C` : 'N/A'}
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.has('storage') && (
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1">
+                                <HardDrive className="w-4 h-4 text-gray-400" />
+                                {device.storage_usage !== null ? `${Math.round(device.storage_usage)}%` : 'N/A'}
+                              </div>
+                            </td>
+                          )}
+                          {visibleColumns.has('health') && (
+                            <td className="px-4 py-3">
+                              <span className={`font-bold ${getHealthScoreColor(device.health_score)}`}>
+                                {device.health_score}
+                              </span>
+                            </td>
+                          )}
+                          {visibleColumns.has('alerts') && (
+                            <td className="px-4 py-3">
+                              {device.active_alerts > 0 ? (
+                                <Badge variant="destructive">{device.active_alerts}</Badge>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </td>
+                          )}
+                          <td className="px-4 py-3">
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleIssueCommand(device.device_id, 'refresh_display')}
+                                disabled={!!pendingCommands[device.device_id]}
+                                title="Refresh Display"
+                              >
+                                <RefreshCw className={`w-3 h-3 ${pendingCommands[device.device_id] ? 'animate-spin' : ''}`} />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleIssueCommand(device.device_id, 'reboot')}
+                                disabled={!!pendingCommands[device.device_id]}
+                                title="Reboot"
+                              >
+                                <Activity className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {filteredDevices.map((device) => (
               <Card key={device.device_id} className={`${getStatusBorderColor(device.status_color)} border-2`}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -675,6 +955,26 @@ const DeviceMonitoringDashboard: React.FC = () => {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="trends" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Fleet Health Trends</CardTitle>
+              <CardDescription>
+                Predictive insights and historical trends for your device fleet
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-8 text-gray-500">
+                <TrendingUp className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                <p>Trends visualization coming soon</p>
+                <p className="text-sm mt-2">
+                  View battery degradation, temperature patterns, and predictive maintenance alerts
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

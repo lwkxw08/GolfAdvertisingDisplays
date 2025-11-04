@@ -729,3 +729,349 @@ async def ingest_device_uptime_batch(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error ingesting uptime data: {str(e)}")
+
+
+@router.get("/devices/{device_id}/trends", response_model=schemas.DeviceTrendsResponse)
+async def get_device_trends(
+    device_id: int,
+    days: int = Query(default=7, ge=1, le=90),
+    current_user: User = Depends(require_tenant_access),
+    db: Session = Depends(get_db)
+):
+    """Get health trends and predictive insights for a specific device"""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN] and device.course_id != current_user.course_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    cutoff_time = datetime.now(timezone.utc) - timedelta(days=days)
+    
+    health_metrics = db.query(DeviceHealthMetric).filter(
+        DeviceHealthMetric.device_id == device_id,
+        DeviceHealthMetric.timestamp >= cutoff_time
+    ).order_by(DeviceHealthMetric.timestamp.asc()).all()
+    
+    if not health_metrics:
+        return schemas.DeviceTrendsResponse(
+            device_id=device_id,
+            device_name=device.name,
+            period_days=days,
+            health_trends=[],
+            battery_degradation_rate=None,
+            avg_temperature=None,
+            max_temperature=None,
+            offline_incidents=0,
+            avg_uptime_hours=None,
+            predictive_alerts=[]
+        )
+    
+    health_trends = []
+    battery_levels = []
+    temperatures = []
+    uptime_values = []
+    
+    for metric in health_metrics:
+        health_score = DeviceMonitoringService.calculate_health_score(
+            battery_level=metric.battery_level,
+            temperature=metric.temperature,
+            storage_usage=metric.storage_usage,
+            signal_strength=metric.signal_strength,
+            display_errors=metric.display_errors or 0
+        )
+        
+        health_trends.append(schemas.DeviceHealthTrend(
+            timestamp=metric.timestamp,
+            battery_level=metric.battery_level,
+            temperature=metric.temperature,
+            signal_strength=metric.signal_strength,
+            storage_usage=metric.storage_usage,
+            health_score=health_score
+        ))
+        
+        if metric.battery_level is not None:
+            battery_levels.append((metric.timestamp, metric.battery_level))
+        if metric.temperature is not None:
+            temperatures.append(metric.temperature)
+        if metric.uptime_seconds is not None:
+            uptime_values.append(metric.uptime_seconds / 3600)
+    
+    battery_degradation_rate = None
+    if len(battery_levels) >= 2:
+        first_battery = battery_levels[0][1]
+        last_battery = battery_levels[-1][1]
+        time_diff_days = (battery_levels[-1][0] - battery_levels[0][0]).total_seconds() / 86400
+        if time_diff_days > 0:
+            battery_degradation_rate = (first_battery - last_battery) / time_diff_days
+    
+    offline_incidents = db.query(DeviceAlert).filter(
+        DeviceAlert.device_id == device_id,
+        DeviceAlert.alert_type == AlertType.DEVICE_OFFLINE,
+        DeviceAlert.created_at >= cutoff_time
+    ).count()
+    
+    predictive_alerts = []
+    if battery_degradation_rate and battery_degradation_rate > 2.0:
+        predictive_alerts.append(f"Battery degrading rapidly at {battery_degradation_rate:.1f}% per day")
+    
+    if temperatures and max(temperatures) > 70:
+        predictive_alerts.append(f"High temperature detected: {max(temperatures):.1f}°C")
+    
+    if offline_incidents > 5:
+        predictive_alerts.append(f"Frequent offline incidents: {offline_incidents} in {days} days")
+    
+    avg_temp = sum(temperatures) / len(temperatures) if temperatures else None
+    max_temp = max(temperatures) if temperatures else None
+    avg_uptime = sum(uptime_values) / len(uptime_values) if uptime_values else None
+    
+    return schemas.DeviceTrendsResponse(
+        device_id=device_id,
+        device_name=device.name,
+        period_days=days,
+        health_trends=health_trends,
+        battery_degradation_rate=battery_degradation_rate,
+        avg_temperature=avg_temp,
+        max_temperature=max_temp,
+        offline_incidents=offline_incidents,
+        avg_uptime_hours=avg_uptime,
+        predictive_alerts=predictive_alerts
+    )
+
+
+@router.get("/devices/fleet/trends", response_model=schemas.FleetTrendsResponse)
+async def get_fleet_trends(
+    days: int = Query(default=7, ge=1, le=90),
+    course_id: Optional[int] = Query(None),
+    current_user: User = Depends(require_tenant_access),
+    db: Session = Depends(get_db)
+):
+    """Get fleet-wide trends and predictive insights"""
+    cutoff_time = datetime.now(timezone.utc) - timedelta(days=days)
+    
+    devices_query = db.query(Device)
+    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
+        devices_query = devices_query.filter(Device.course_id == current_user.course_id)
+    elif course_id:
+        devices_query = devices_query.filter(Device.course_id == course_id)
+    
+    devices = devices_query.all()
+    device_ids = [d.id for d in devices]
+    
+    health_metrics = db.query(DeviceHealthMetric).filter(
+        DeviceHealthMetric.device_id.in_(device_ids),
+        DeviceHealthMetric.timestamp >= cutoff_time
+    ).order_by(DeviceHealthMetric.timestamp.asc()).all()
+    
+    health_score_by_date = {}
+    battery_by_date = {}
+    offline_by_day = {}
+    
+    for metric in health_metrics:
+        date_key = metric.timestamp.date().isoformat()
+        
+        health_score = DeviceMonitoringService.calculate_health_score(
+            battery_level=metric.battery_level,
+            temperature=metric.temperature,
+            storage_usage=metric.storage_usage,
+            signal_strength=metric.signal_strength,
+            display_errors=metric.display_errors or 0
+        )
+        
+        if date_key not in health_score_by_date:
+            health_score_by_date[date_key] = []
+        health_score_by_date[date_key].append(health_score)
+        
+        if metric.battery_level is not None:
+            if date_key not in battery_by_date:
+                battery_by_date[date_key] = []
+            battery_by_date[date_key].append(metric.battery_level)
+    
+    health_score_trend = [
+        {"date": date, "avg_score": sum(scores) / len(scores)}
+        for date, scores in sorted(health_score_by_date.items())
+    ]
+    
+    battery_health_trend = [
+        {"date": date, "avg_battery": sum(levels) / len(levels)}
+        for date, levels in sorted(battery_by_date.items())
+    ]
+    
+    offline_alerts = db.query(DeviceAlert).filter(
+        DeviceAlert.device_id.in_(device_ids),
+        DeviceAlert.alert_type == AlertType.DEVICE_OFFLINE,
+        DeviceAlert.created_at >= cutoff_time
+    ).all()
+    
+    for alert in offline_alerts:
+        day_name = alert.created_at.strftime("%A")
+        offline_by_day[day_name] = offline_by_day.get(day_name, 0) + 1
+    
+    devices_at_risk = []
+    for device in devices:
+        recent_alerts = db.query(DeviceAlert).filter(
+            DeviceAlert.device_id == device.id,
+            DeviceAlert.created_at >= cutoff_time,
+            DeviceAlert.severity.in_([AlertSeverity.CRITICAL, AlertSeverity.ERROR])
+        ).count()
+        
+        if recent_alerts >= 3:
+            devices_at_risk.append({
+                "device_id": device.id,
+                "device_name": device.name,
+                "alert_count": recent_alerts,
+                "risk_level": "high" if recent_alerts >= 5 else "medium"
+            })
+    
+    avg_health_score = sum(s["avg_score"] for s in health_score_trend) / len(health_score_trend) if health_score_trend else 0
+    
+    return schemas.FleetTrendsResponse(
+        period_days=days,
+        total_devices=len(devices),
+        avg_health_score=avg_health_score,
+        health_score_trend=health_score_trend,
+        battery_health_trend=battery_health_trend,
+        offline_pattern=offline_by_day,
+        devices_at_risk=devices_at_risk
+    )
+
+
+@router.post("/devices/bulk/command", response_model=schemas.BulkCommandResponse)
+async def issue_bulk_command(
+    request: schemas.BulkCommandRequest,
+    current_user: User = Depends(require_tenant_access),
+    db: Session = Depends(get_db)
+):
+    """Issue a command to multiple devices at once"""
+    command_ids = []
+    failed_devices = []
+    
+    for device_id in request.device_ids:
+        try:
+            device = db.query(Device).filter(Device.id == device_id).first()
+            if not device:
+                failed_devices.append(device_id)
+                continue
+            
+            if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN] and device.course_id != current_user.course_id:
+                failed_devices.append(device_id)
+                continue
+            
+            command = DeviceRemoteCommand(
+                device_id=device_id,
+                command_type=request.command_type,
+                command_data=request.command_data,
+                status=CommandStatus.PENDING,
+                issued_by=current_user.id
+            )
+            db.add(command)
+            db.flush()
+            command_ids.append(command.id)
+            
+        except Exception:
+            failed_devices.append(device_id)
+    
+    db.commit()
+    
+    return schemas.BulkCommandResponse(
+        success=len(failed_devices) == 0,
+        commands_issued=len(command_ids),
+        command_ids=command_ids,
+        failed_devices=failed_devices
+    )
+
+
+@router.get("/devices/export/csv")
+async def export_devices_csv(
+    status_filter: Optional[str] = Query(None),
+    course_id: Optional[int] = Query(None),
+    current_user: User = Depends(require_tenant_access),
+    db: Session = Depends(get_db)
+):
+    """Export device health data as CSV"""
+    from fastapi.responses import StreamingResponse
+    import io
+    import csv
+    
+    devices_query = db.query(Device)
+    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
+        devices_query = devices_query.filter(Device.course_id == current_user.course_id)
+    elif course_id:
+        devices_query = devices_query.filter(Device.course_id == course_id)
+    
+    devices = devices_query.all()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    writer.writerow([
+        'Device ID', 'Device Name', 'Course ID', 'Status', 'Last Seen',
+        'Battery Level', 'Charging', 'Signal Strength', 'Temperature',
+        'Storage Usage', 'CPU Usage', 'Memory Usage', 'Uptime Hours',
+        'Display Errors', 'Health Score', 'Active Alerts'
+    ])
+    
+    for device in devices:
+        latest_health = db.query(DeviceHealthMetric).filter(
+            DeviceHealthMetric.device_id == device.id
+        ).order_by(DeviceHealthMetric.timestamp.desc()).first()
+        
+        active_alerts = db.query(DeviceAlert).filter(
+            DeviceAlert.device_id == device.id,
+            DeviceAlert.is_resolved == False
+        ).count()
+        
+        if latest_health:
+            health_score = DeviceMonitoringService.calculate_health_score(
+                battery_level=latest_health.battery_level,
+                temperature=latest_health.temperature,
+                storage_usage=latest_health.storage_usage,
+                signal_strength=latest_health.signal_strength,
+                display_errors=latest_health.display_errors or 0
+            )
+            
+            status = "Online" if device.is_online else "Offline"
+            
+            if status_filter and status_filter.lower() != status.lower():
+                continue
+            
+            writer.writerow([
+                device.id,
+                device.name,
+                device.course_id,
+                status,
+                device.last_sync.isoformat() if device.last_sync else 'Never',
+                f"{latest_health.battery_level:.1f}" if latest_health.battery_level else 'N/A',
+                'Yes' if latest_health.is_charging else 'No',
+                f"{latest_health.signal_strength:.1f}" if latest_health.signal_strength else 'N/A',
+                f"{latest_health.temperature:.1f}" if latest_health.temperature else 'N/A',
+                f"{latest_health.storage_usage:.1f}" if latest_health.storage_usage else 'N/A',
+                f"{latest_health.cpu_usage:.1f}" if latest_health.cpu_usage else 'N/A',
+                f"{latest_health.memory_usage:.1f}" if latest_health.memory_usage else 'N/A',
+                f"{latest_health.uptime_seconds / 3600:.1f}" if latest_health.uptime_seconds else 'N/A',
+                latest_health.display_errors or 0,
+                f"{health_score:.1f}",
+                active_alerts
+            ])
+        else:
+            status = "Online" if device.is_online else "Offline"
+            
+            if status_filter and status_filter.lower() != status.lower():
+                continue
+            
+            writer.writerow([
+                device.id,
+                device.name,
+                device.course_id,
+                status,
+                device.last_sync.isoformat() if device.last_sync else 'Never',
+                'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 0, 'N/A', active_alerts
+            ])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=device_health_export.csv"}
+    )
