@@ -907,6 +907,7 @@ const DeviceMonitoringDashboard: React.FC = () => {
               </Card>
             ))}
           </div>
+          )}
         </TabsContent>
 
         <TabsContent value="alerts" className="space-y-4">
