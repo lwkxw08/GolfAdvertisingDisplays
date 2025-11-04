@@ -112,6 +112,19 @@ class ApiClient {
           signal: AbortSignal.timeout(timeout),
         });
 
+        if (response.status === 401) {
+          if (this.token) {
+            this.clearToken();
+            localStorage.removeItem('user');
+            if (!(window as any).__redirectingToLogin) {
+              (window as any).__redirectingToLogin = true;
+              const next = encodeURIComponent(window.location.href);
+              window.location.replace(`/?next=${next}`);
+            }
+          }
+          throw new Error('Unauthorized');
+        }
+
         if (!response.ok) {
           const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
           throw new Error(error.detail || `HTTP ${response.status}`);
@@ -757,6 +770,19 @@ class ApiClient {
       body: JSON.stringify(exportRequest),
     });
 
+    if (response.status === 401) {
+      if (this.token) {
+        this.clearToken();
+        localStorage.removeItem('user');
+        if (!(window as any).__redirectingToLogin) {
+          (window as any).__redirectingToLogin = true;
+          const next = encodeURIComponent(window.location.href);
+          window.location.replace(`/?next=${next}`);
+        }
+      }
+      throw new Error('Unauthorized');
+    }
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
       throw new Error(error.detail || `HTTP ${response.status}`);
@@ -861,6 +887,19 @@ class ApiClient {
         'Authorization': `Bearer ${this.token}`
       }
     });
+    
+    if (response.status === 401) {
+      if (this.token) {
+        this.clearToken();
+        localStorage.removeItem('user');
+        if (!(window as any).__redirectingToLogin) {
+          (window as any).__redirectingToLogin = true;
+          const next = encodeURIComponent(window.location.href);
+          window.location.replace(`/?next=${next}`);
+        }
+      }
+      throw new Error('Unauthorized');
+    }
     
     if (!response.ok) {
       throw new Error('Failed to export CSV');
