@@ -115,7 +115,7 @@ async def record_device_health_by_external_id(
     db: Session = Depends(get_db)
 ):
     """Record health metrics for a device using external_id (called by device client heartbeat)"""
-    device = db.query(Device).filter(Device.external_id == external_id).first()
+    device = db.query(Device).filter(Device.device_id == external_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     
