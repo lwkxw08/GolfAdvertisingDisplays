@@ -215,6 +215,7 @@ create_device_config() {
     sudo tee /etc/eink_device/config.json > /dev/null <<EOF
 {
   "device_id": "$device_id",
+  "external_id": "$device_id",
   "api_base_url": "$API_BASE_URL",
   "sync_interval": 900,
   "max_retries": 3,

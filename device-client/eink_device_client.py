@@ -486,6 +486,7 @@ class EInkDeviceClient:
     def __init__(self, config_file: str = "/etc/eink_device/config.json"):
         self.config = self._load_config(config_file)
         self.device_id = self.config.get('device_id', 'unknown')
+        self.external_id = self.config.get('external_id', self.device_id)
         self.api_base_url = self.config.get('api_base_url', 'https://golfadvertisingdisplays.onrender.com')
         self.sync_interval = self.config.get('sync_interval', 900)  # 15 minutes default
         
@@ -1088,7 +1089,7 @@ class EInkDeviceClient:
                 'last_error': None
             }
             
-            url = f"{self.api_base_url}/api/device/{self.device_id}/health"
+            url = f"{self.api_base_url}/api/device/{self.external_id}/health"
             response = requests.post(url, json=health_data, timeout=30)
             
             if response.status_code == 200:
