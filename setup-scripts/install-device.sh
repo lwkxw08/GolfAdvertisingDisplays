@@ -247,16 +247,19 @@ create_systemd_service() {
     sudo tee /etc/systemd/system/eink-device.service > /dev/null <<EOF
 [Unit]
 Description=E-ink Device Client for Golf CMS
-After=network.target
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/eink-device
-ExecStart=/home/pi/eink-device/venv/bin/python eink_device_client.py
+ExecStart=/home/pi/eink-device/venv/bin/python -u eink_device_client.py
+Environment=PYTHONUNBUFFERED=1
 Restart=always
 RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
 StandardOutput=journal
 StandardError=journal
 
@@ -265,13 +268,16 @@ WantedBy=multi-user.target
 EOF
     
     print_success "Systemd service created"
+    
+    print_info "Enabling service to start on boot..."
+    sudo systemctl daemon-reload
+    sudo systemctl enable eink-device.service
+    print_success "Service enabled - will start automatically after reboot"
 }
 
 start_service() {
-    print_info "Enabling and starting device client service..."
+    print_info "Starting device client service..."
     
-    sudo systemctl daemon-reload
-    sudo systemctl enable eink-device.service
     sudo systemctl start eink-device.service
     
     sleep 2
@@ -368,9 +374,7 @@ display_completion() {
     echo "  ✓ Resilient to backend restarts and network issues"
     echo "  ✓ Device uptime tracking with minute-level accuracy"
     echo "  ✓ Proof-of-Play logging for sponsor reporting"
-    echo ""
-    echo "IMPORTANT: After reboot, start the service with:"
-    echo "  sudo systemctl start eink-device.service"
+    echo "  ✓ Service auto-starts on boot (survives power cycles)"
     echo ""
     echo "Useful Commands:"
     echo "  • Check service status:  sudo systemctl status eink-device.service"
@@ -414,20 +418,20 @@ main() {
     
     display_completion "$DEVICE_ID"
     
-    print_warning "SPI interface has been enabled. A reboot is required before starting the service."
+    print_warning "SPI interface has been enabled. A reboot is required."
+    print_success "Service is enabled and will start automatically after reboot."
     echo ""
     read -p "Reboot now? (y/n) " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         print_info "Rebooting in 5 seconds..."
-        print_info "After reboot, run: sudo systemctl start eink-device.service"
+        print_info "The device service will start automatically after reboot."
         sleep 5
         sudo reboot
     else
-        print_warning "Please reboot manually before starting the service:"
+        print_warning "Please reboot manually to complete installation:"
         print_info "  sudo reboot"
-        print_info "After reboot, start the service with:"
-        print_info "  sudo systemctl start eink-device.service"
+        print_info "The device service will start automatically after reboot."
     fi
 }
 
