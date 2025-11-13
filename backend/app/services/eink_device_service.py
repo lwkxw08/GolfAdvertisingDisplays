@@ -222,8 +222,8 @@ class EInkDeviceService:
             start_hour, start_min = map(int, start_time.split(':'))
             end_hour, end_min = map(int, end_time.split(':'))
             
-            start_dt = datetime.combine(today, datetime.min.time().replace(hour=start_hour, minute=start_min))
-            end_dt = datetime.combine(today, datetime.min.time().replace(hour=end_hour, minute=end_min))
+            start_dt = datetime.combine(today, datetime.min.time().replace(hour=start_hour, minute=start_min), tzinfo=timezone.utc)
+            end_dt = datetime.combine(today, datetime.min.time().replace(hour=end_hour, minute=end_min), tzinfo=timezone.utc)
             
             if start_time == end_time:
                 return None
@@ -271,7 +271,7 @@ class EInkDeviceService:
             is_active_today = current_day_num in campaign_days
             
             tomorrow = now.date() + timedelta(days=1)
-            midnight = datetime.combine(tomorrow, datetime.min.time())
+            midnight = datetime.combine(tomorrow, datetime.min.time(), tzinfo=timezone.utc)
             
             return midnight
             
