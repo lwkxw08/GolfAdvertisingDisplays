@@ -371,15 +371,28 @@ async def create_campaign(
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     
+    from datetime import timezone, time as dt_time
+    now = datetime.now(timezone.utc)
+    
     active_campaigns = db.query(SponsorCampaign).filter(
         SponsorCampaign.device_id == device_id,
         SponsorCampaign.is_active == True
-    ).count()
+    ).all()
     
-    if active_campaigns >= 5:
+    non_expired_count = 0
+    for campaign in active_campaigns:
+        if isinstance(campaign.end_date, datetime):
+            end_dt = campaign.end_date if campaign.end_date.tzinfo else campaign.end_date.replace(tzinfo=timezone.utc)
+        else:
+            end_dt = datetime.combine(campaign.end_date, dt_time.max, tzinfo=timezone.utc)
+        
+        if now < end_dt:
+            non_expired_count += 1
+    
+    if non_expired_count >= 5:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Maximum 5 campaigns per device allowed"
+            detail="Maximum 5 active non-expired campaigns per device allowed"
         )
     
     file_content = await creative.read()
@@ -478,6 +491,10 @@ async def list_campaigns(
     for campaign in campaigns:
         campaign_status, currently_active = compute_campaign_status(campaign)
         
+        if campaign_status == "expired" and campaign.is_active:
+            campaign.is_active = False
+            db.add(campaign)
+        
         if status and status != "all":
             if campaign_status != status:
                 continue
@@ -502,6 +519,8 @@ async def list_campaigns(
             "currently_active": currently_active
         }
         result.append(campaign_dict)
+    
+    db.commit()
     
     return result
 
