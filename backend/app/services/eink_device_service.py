@@ -56,25 +56,45 @@ class EInkDeviceService:
     def _get_optimized_content(self, db: Session, device: Device, 
                              connectivity_type: str) -> Dict[str, Any]:
         """Get content optimized for connectivity type and E-ink display"""
+        from datetime import date, time as dt_time
         now = datetime.now(timezone.utc)
         current_time = now.strftime("%H:%M")
         current_day = now.strftime("%A").lower()
         
+        def to_aware_datetime(dt_or_date):
+            """Convert date or datetime to timezone-aware datetime"""
+            if isinstance(dt_or_date, datetime):
+                return dt_or_date if dt_or_date.tzinfo else dt_or_date.replace(tzinfo=timezone.utc)
+            elif isinstance(dt_or_date, date):
+                return datetime.combine(dt_or_date, dt_time.min, tzinfo=timezone.utc)
+            return None
+        
         from ..database import Notice
         active_notices = db.query(Notice).filter(
             Notice.device_id == device.id,
-            Notice.start_time <= now,
-            Notice.end_time > now,
             Notice.is_active == True
         ).order_by(Notice.created_at.desc()).all()
         
+        active_notices = [
+            n for n in active_notices
+            if to_aware_datetime(n.start_time) <= now < to_aware_datetime(n.end_time)
+        ]
+        
         from ..database import SponsorCampaign
-        all_campaigns = db.query(SponsorCampaign).filter(
+        all_campaigns_raw = db.query(SponsorCampaign).filter(
             SponsorCampaign.device_id == device.id,
-            SponsorCampaign.start_date <= now,
-            SponsorCampaign.end_date > now,
             SponsorCampaign.is_active == True
         ).order_by(SponsorCampaign.priority.desc()).all()
+        
+        all_campaigns = []
+        for campaign in all_campaigns_raw:
+            start_dt = to_aware_datetime(campaign.start_date)
+            end_dt = to_aware_datetime(campaign.end_date)
+            if end_dt:
+                end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+            
+            if start_dt <= now <= end_dt:
+                all_campaigns.append(campaign)
         
         active_campaigns = []
         for campaign in all_campaigns:
@@ -134,30 +154,44 @@ class EInkDeviceService:
                                   active_notices: list, all_campaigns: list) -> Optional[datetime]:
         """Calculate the next content boundary time (notice expiry, campaign start/end, day change)"""
         from ..database import Notice, SponsorCampaign
+        from datetime import date, time as dt_time
+        
+        def to_aware_datetime(dt_or_date):
+            """Convert date or datetime to timezone-aware datetime"""
+            if isinstance(dt_or_date, datetime):
+                return dt_or_date if dt_or_date.tzinfo else dt_or_date.replace(tzinfo=timezone.utc)
+            elif isinstance(dt_or_date, date):
+                return datetime.combine(dt_or_date, dt_time.min, tzinfo=timezone.utc)
+            return None
+        
         boundaries = []
         
         for notice in active_notices:
-            if notice.end_time > now:
-                boundaries.append(notice.end_time)
+            end_time_aware = to_aware_datetime(notice.end_time)
+            if end_time_aware and end_time_aware > now:
+                boundaries.append(end_time_aware)
         
         upcoming_notices = db.query(Notice).filter(
             Notice.device_id == device.id,
-            Notice.start_time > now,
-            Notice.start_time <= now + timedelta(days=7),
             Notice.is_active == True
         ).all()
         
         for notice in upcoming_notices:
-            boundaries.append(notice.start_time)
+            start_time_aware = to_aware_datetime(notice.start_time)
+            if start_time_aware and start_time_aware > now and start_time_aware <= now + timedelta(days=7):
+                boundaries.append(start_time_aware)
         
         current_time = now.strftime("%H:%M")
         current_day = now.strftime("%A").lower()
         
         for campaign in all_campaigns:
-            if campaign.start_date > now:
-                boundaries.append(campaign.start_date)
-            if campaign.end_date > now:
-                boundaries.append(campaign.end_date)
+            start_dt = to_aware_datetime(campaign.start_date)
+            end_dt = to_aware_datetime(campaign.end_date)
+            
+            if start_dt and start_dt > now:
+                boundaries.append(start_dt)
+            if end_dt and end_dt > now:
+                boundaries.append(end_dt)
             
             if campaign.start_time and campaign.end_time:
                 next_time_boundary = self._calculate_next_time_boundary(
